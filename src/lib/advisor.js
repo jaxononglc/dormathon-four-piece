@@ -1,7 +1,7 @@
 // Mock "AI". Picks a canned answer by keyword and fills it with live store data,
 // so replies stay consistent with what the rest of the app shows.
 import { stockStatus, suggestedQty } from '../store/AppStore';
-import { rm, rm2 } from './format';
+import { addDays, localToday, rm, rm2 } from './format';
 
 export function advisorReply(text, store) {
   const q = text.toLowerCase();
@@ -24,7 +24,7 @@ export function advisorReply(text, store) {
     return { type: 'text', text: p ? `Bake ${suggestedQty(p)} ${p.unit} of ${p.name}. That brings you to twice your minimum (${p.min} ${p.unit}), which covers a busy Sunday.` : 'Bake enough to get back to twice your minimum level.' };
   }
   if (/(deepavali|festival)/.test(q)) {
-    return { type: 'text', text: 'Deepavali is on 8 Nov. Orders usually jump in the 2 weeks before festivals, so restock flour, butter, sugar and cake boxes by 25 Oct. Connect Gemini for a detailed plan.' };
+    return { type: 'text', text: 'Deepavali is on 8 Nov. Orders usually jump in the 2 weeks before festivals, so restock flour, butter, sugar and cake boxes by 25 Oct.' };
   }
   if (/(budget|money to spend|only have)/.test(q)) {
     return { type: 'text', text: 'Start with the items that are out of stock, then the low ones. Ask “What is low on stock?” to see the list with costs.' };
@@ -46,6 +46,24 @@ export function advisorReply(text, store) {
   }
   if (/remind/.test(q)) {
     return { type: 'text', text: 'Done — I’ll remind you on 25 Oct (payday) to buy the sugar and anything else left on the plan.' };
+  }
+  if (/(best.?sell|top sell|most popular|sell(s|ing)? (the )?most|best seller)/.test(q)) {
+    // Units sold per product over the last 7 days, from the recorded sales.
+    const units = {};
+    for (let i = 0; i < 7; i++) {
+      Object.entries(store.sales[addDays(localToday(), -i)] || {}).forEach(([id, u]) => (units[id] = (units[id] || 0) + u));
+    }
+    const ranked = Object.entries(units)
+      .map(([id, u]) => ({ p: store.productsById[id], u }))
+      .filter((x) => x.p)
+      .sort((a, b) => b.u - a.u);
+    if (!ranked.length) return { type: 'text', text: 'No sales were recorded in the last 7 days, so there is no best seller yet. Record your daily sales to see it.' };
+    const [top, ...rest] = ranked;
+    const next = rest.slice(0, 2).map((x) => `${x.p.name} (${x.u})`).join(' and ');
+    return {
+      type: 'text',
+      text: `Your best seller in the last 7 days is ${top.p.name}: ${top.u} ${top.p.unit} sold, about ${rm(top.u * (top.p.price || 0))}.${next ? ` Next are ${next}.` : ''} You have ${top.p.stock} ${top.p.unit} left, so keep it stocked.`,
+    };
   }
   if (/(lose money|margin|losing|profit)/.test(q)) {
     const margins = products
@@ -83,7 +101,7 @@ export function advisorReply(text, store) {
     };
   }
   if (/plan/.test(q)) {
-    return { type: 'text', text: 'Deepavali is on 8 Nov. Orders usually jump in the 2 weeks before festivals, so restock flour, butter, sugar and cake boxes by 25 Oct. Connect Gemini for a detailed plan.' };
+    return { type: 'text', text: 'Deepavali is on 8 Nov. Orders usually jump in the 2 weeks before festivals, so restock flour, butter, sugar and cake boxes by 25 Oct.' };
   }
   return {
     type: 'text',

@@ -19,8 +19,9 @@ export async function getAiReply(history, store) {
   try {
     return await askGemini(history, store);
   } catch (err) {
+    // Answer quietly from the local data; the reason only goes to the console.
     console.warn('Gemini failed, using offline answer:', err);
-    return `${local}\n\n(Offline answer — Gemini is unavailable: ${err.message})`;
+    return local;
   }
 }
 
