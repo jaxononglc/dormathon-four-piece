@@ -131,21 +131,6 @@ export const ANALYSIS = {
 };
 export const TOP_PRODUCTS = TOP_PRODUCTS_6W;
 
-// 0–4 intensity, rows = time slots, columns = Mon..Sun.
-export const BUSIEST = {
-  slots: ['8am', '10am', '12pm', '2pm', '4pm', '6pm'],
-  days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-  grid: [
-    [2, 2, 2, 2, 2, 3, 3],
-    [1, 1, 1, 1, 2, 4, 4],
-    [2, 2, 2, 2, 2, 3, 3],
-    [1, 1, 1, 1, 2, 4, 4],
-    [2, 1, 2, 2, 3, 3, 2],
-    [2, 2, 2, 2, 4, 2, 1],
-  ],
-  insight: 'Weekends 10am–3pm bring 38% of orders. Have fresh batches ready by 9:30 am.',
-};
-
 export const MARGIN_TARGET = 0.35;
 
 export const SLOW_MOVERS = [

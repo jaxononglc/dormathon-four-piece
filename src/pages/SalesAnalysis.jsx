@@ -5,11 +5,10 @@ import KpiCard from '../components/KpiCard';
 import { LineChart, Sparkline } from '../components/Charts';
 import { useStore } from '../store/AppStore';
 import { useToast } from '../store/Toast';
-import { ANALYSIS, TOP_PRODUCTS, BUSIEST, MARGIN_TARGET, SLOW_MOVERS, SHOP } from '../data/mockData';
+import { ANALYSIS, TOP_PRODUCTS, MARGIN_TARGET, SLOW_MOVERS, SHOP } from '../data/mockData';
 import { downloadCSV, pct, rm, rm2, signedPct } from '../lib/format';
 
 const SORTS = { revenue: 'Revenue', units: 'Units', margin: 'Margin' };
-const HEAT = ['#f1f1ef', '#e0e7ff', '#c7d2fe', '#818cf8', '#4f46e5'];
 
 export default function SalesAnalysis() {
   const { productsById } = useStore();
@@ -117,8 +116,7 @@ export default function SalesAnalysis() {
         <LineChart labels={a.trend.map((t) => t.label)} current={a.trend.map((t) => t.value)} previous={a.previous} />
       </section>
 
-      <div className="grid-2">
-        <section className="card table-card">
+      <section className="card table-card">
           <div className="card__head card--pad">
             <div>
               <h3>Top products</h3>
@@ -150,23 +148,6 @@ export default function SalesAnalysis() {
             </tbody>
           </table>
         </section>
-
-        <section className="card card--pad">
-          <h3>Busiest times</h3>
-          <p className="muted small">Customers by day and time</p>
-          <div className="heatmap">
-            <span />
-            {BUSIEST.days.map((d) => <span key={d} className="heatmap__day">{d}</span>)}
-            {BUSIEST.grid.map((row, r) => (
-              <Row key={r} label={BUSIEST.slots[r]} row={row} />
-            ))}
-          </div>
-          <div className="heat-legend">
-            Fewer {HEAT.map((c) => <i key={c} style={{ background: c }} />)} More customers
-          </div>
-          <div className="insight"><Sparkles size={14} />{BUSIEST.insight}</div>
-        </section>
-      </div>
 
       <div className="grid-2">
         <section className="card card--pad">
@@ -226,14 +207,5 @@ export default function SalesAnalysis() {
         </section>
       </div>
     </div>
-  );
-}
-
-function Row({ label, row }) {
-  return (
-    <>
-      <span className="heatmap__slot">{label}</span>
-      {row.map((v, i) => <span key={i} className="heatmap__cell" style={{ background: HEAT[v] }} title={`${label}: ${['very quiet', 'quiet', 'normal', 'busy', 'very busy'][v]}`} />)}
-    </>
   );
 }

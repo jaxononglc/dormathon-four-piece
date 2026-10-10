@@ -4,7 +4,7 @@ import { useStore } from '../store/AppStore';
 import { SHOP } from '../data/mockData';
 
 const NAV = [
-  { to: '/', label: 'Overview', icon: LayoutGrid, end: true },
+  { to: '/', label: 'Dashboard', icon: LayoutGrid, end: true },
   { to: '/inventory', label: 'Inventory', icon: Package },
   { to: '/sales', label: 'Sales analysis', icon: LineChart },
   { to: '/advisor', label: 'AI Advisor', icon: Sparkles, badge: 'advisor' },

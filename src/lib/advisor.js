@@ -60,7 +60,7 @@ export function advisorReply(text, store) {
     const cost = reorder.reduce((s, p) => s + suggestedQty(p) * p.cost, 0);
     return {
       type: 'text',
-      text: `${reorder.length} items need restocking:\n${list}\nRestocking all of them costs about ${rm2(cost)}. Open Inventory → Reorder Helper to receive them.`,
+      text: `${reorder.length} items need restocking:\n${list}\nRestocking all of them costs about ${rm2(cost)}. Ask me to “message my suppliers” and I’ll draft the orders.`,
     };
   }
   if (/(deepavali|festival|plan)/.test(q)) {

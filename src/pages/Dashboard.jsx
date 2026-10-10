@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, Box, AlertTriangle, Receipt, LineChart, Sparkles, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Box, AlertTriangle, Receipt, LineChart, Sparkles, ArrowRight, CheckCircle2 } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
 import { BarChart } from '../components/Charts';
 import DailySalesModal from '../components/DailySalesModal';
@@ -14,7 +14,6 @@ export default function Dashboard() {
   const store = useStore();
   const { products, productsById, sales, reorder, lowCount, outCount, stockValue, salesFor, dismissedRecs, dispatch } = store;
   const navigate = useNavigate();
-  const [query, setQuery] = useState('');
   const [range, setRange] = useState('week');
   const [params] = useSearchParams();
   // /?record=1 opens the daily sales modal directly (handy for demos and links).
@@ -71,16 +70,6 @@ export default function Dashboard() {
             <p className="muted">{longDate(TODAY)} · Here’s how your shop is doing</p>
           </div>
           <div className="topbar__actions">
-            <form
-              className="search search--sm"
-              onSubmit={(e) => {
-                e.preventDefault();
-                navigate(`/inventory${query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ''}`);
-              }}
-            >
-              <Search size={16} />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search products…" />
-            </form>
             <button className="btn btn--primary" onClick={() => setRecording(true)}>Record New Sale</button>
           </div>
         </header>
@@ -143,7 +132,7 @@ export default function Dashboard() {
                 {rec.stock === 0 ? `You’ve run out of ${rec.name}.` : `Only ${rec.stock} ${rec.unit} left — your minimum is ${rec.min} ${rec.unit}.`} Order {suggestedQty(rec)} {rec.unit} from {rec.supplier} (≈ {rm2(suggestedQty(rec) * rec.cost)}) so you don’t run out.
               </p>
               <div className="row gap-8">
-                <button className="btn btn--primary btn--xs" onClick={() => navigate('/inventory/reorder')}>Draft order</button>
+                <button className="btn btn--primary btn--xs" onClick={() => ask('Message my suppliers')}>Draft order</button>
                 <button className="btn btn--ghost btn--xs" onClick={() => dispatch({ type: 'dismissRec', id: rec.id })}>Not now</button>
               </div>
             </div>

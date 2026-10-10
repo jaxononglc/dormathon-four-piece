@@ -38,13 +38,6 @@ function reducer(state, action) {
           p.id === action.id ? { ...p, stock: Math.max(0, p.stock + action.delta) } : p
         ),
       };
-    case 'receiveMany': {
-      const byId = Object.fromEntries(action.items.map((i) => [i.id, i.qty]));
-      return {
-        ...state,
-        products: state.products.map((p) => (byId[p.id] ? { ...p, stock: p.stock + byId[p.id] } : p)),
-      };
-    }
     case 'saveSales': {
       // Replace the day's record and move stock by the difference, so editing
       // an already-saved day never double-counts.
