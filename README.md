@@ -1,17 +1,26 @@
 # Bijak AI — dormathon-four-piece
 
 AI inventory & sales assistant for small businesses (demo shop: *Kedai Kak Ros*, a home bakery).
-React + Vite front end only — **no backend or database**. All data is mock data in
-`src/data/mockData.js`; your edits are kept in the browser's localStorage
-(Settings → Reset brings back the original data).
+React + Vite front end with a small API (`server/api.js`) on a Neon Postgres database.
+Gemini (optional) powers the AI Advisor, the paper-record scan and the sales forecast.
 
 ## Run
 
 ```bash
 npm install
-npm run dev      # http://localhost:5173
-npm run build    # production build in dist/
+cp .env.example .env     # fill in DATABASE_URL (and GEMINI_API_KEY for the AI features)
+npm run db:setup         # creates the tables, loads the demo shop into an empty database
+npm run dev              # http://localhost:5173 (the API runs inside the Vite dev server)
+npm run build            # production build in dist/
 ```
+
+## Deploy to Vercel
+
+1. Import the repo in Vercel (framework: Vite; `vercel.json` sets the build, the page rewrites and the 60 s limit for AI calls).
+2. Project → Settings → Environment Variables: `DATABASE_URL`, `GEMINI_API_KEY`, `GEMINI_MODEL`.
+3. Run `npm run db:setup` once against that database.
+4. In production, `/api/*` is served by `api/[...path].js` (the same code as `server/api.js`), and
+   "Reset demo data" is switched off unless you add `ALLOW_RESET=true`.
 
 ## Pages
 

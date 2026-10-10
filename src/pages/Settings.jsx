@@ -4,7 +4,7 @@ import { useToast } from '../store/Toast';
 import { initials } from '../lib/format';
 
 export default function Settings() {
-  const { dispatch, aiEnabled, syncError, shop } = useStore();
+  const { dispatch, aiEnabled, canReset, syncError, shop } = useStore();
   const toast = useToast();
   return (
     <div className="page">
@@ -30,8 +30,8 @@ export default function Settings() {
           </p>
           {syncError && <p className="small" style={{ color: 'var(--red)' }}>Last save failed ({syncError}). Reload the page to see what was saved.</p>}
         </div>
-        <hr />
-        <div className="split">
+        {canReset && <hr />}
+        {canReset && <div className="split">
           <div>
             <h3>Reset demo data</h3>
             <p className="muted small">Wipes the shared database and loads the demo shop again. Everyone using this database sees the reset.</p>
@@ -47,7 +47,7 @@ export default function Settings() {
           >
             <RotateCcw size={16} />Reset
           </button>
-        </div>
+        </div>}
       </section>
     </div>
   );

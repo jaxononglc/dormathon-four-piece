@@ -14,6 +14,7 @@ const initialState = () => ({
   backend: 'connecting', // 'connecting' | 'online' | 'offline'
   backendError: null, // why the last load failed
   aiEnabled: false, // server has a Gemini key
+  canReset: true, // server allows 'Reset demo data' (off on the live site)
   syncError: null, // last failed save, shown in Settings
   shop: { name: '', type: '', owner: '' }, // Shop table + its owner in Users
   products: [],
@@ -165,7 +166,7 @@ function baseReducer(state, action) {
       return state.advisorUnread ? { ...state, advisorUnread: 0 } : state;
     case 'reset':
       // The API reloads the demo data right after (see dispatch); keep the connection info.
-      return { ...initialState(), backend: state.backend, aiEnabled: state.aiEnabled, shop: state.shop };
+      return { ...initialState(), backend: state.backend, aiEnabled: state.aiEnabled, canReset: state.canReset, shop: state.shop };
     // ---- API ----
     case 'hydrate':
       // Saved data from the database replaces the local copy; UI state (open chat…) stays.

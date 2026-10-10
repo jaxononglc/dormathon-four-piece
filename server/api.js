@@ -21,6 +21,9 @@ class HttpError extends Error {
   }
 }
 
+// "Reset demo data" is for local development; on Vercel it needs ALLOW_RESET=true.
+const resetAllowed = () => !process.env.VERCEL || process.env.ALLOW_RESET === 'true';
+
 const num = (v) => (v == null ? null : Number(v));
 const blank = (v) => (v === '' || v === undefined ? null : v);
 const ms = (col) => `(extract(epoch FROM ${col}) * 1000)::float8`;
@@ -106,6 +109,7 @@ async function getState(today) {
     damage,
     stockLog: logs.map((l) => ({ id: l.id, productId: String(l.item_id), at: l.at, kind: l.kind, delta: Number(l.delta), stockAfter: num(l.stock_after), note: l.note })),
     aiEnabled: Boolean(process.env.GEMINI_API_KEY),
+    canReset: resetAllowed(),
   };
 }
 
@@ -548,7 +552,9 @@ const routes = [
   }],
 
   // Settings → "Reset demo data": wipe everything and load the demo rows again.
+  // Off on the live site (Vercel) so nobody can wipe the shop; set ALLOW_RESET=true there to turn it on.
   ['POST', /^\/reset$/, async () => {
+    if (!resetAllowed()) throw new HttpError(403, 'Reset is turned off on the live site');
     const sql = db();
     await sql.transaction([
       sql.query('TRUNCATE "DamageLog", StockLog, Restocklog, Message, Chat, DismissedAdvice, SalesItem, Sales, Inventory, Item, Category, Supplier, Users, Shop RESTART IDENTITY'),
