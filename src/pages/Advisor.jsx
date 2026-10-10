@@ -30,7 +30,7 @@ function whenLabel(ts) {
 // - First visit (no active chat) → default screen: greeting + starter questions.
 // - The active chat lives in the store, so leaving the page and coming back
 //   shows the same conversation, and a reply that arrives while you're away
-//   still gets saved.
+//   still gets saved.sss
 // - Right panel lists every saved chat (newest first); click to reopen, 🗑 to delete.
 // - "New chat" goes back to the default screen; the chat is only created once
 //   the first message is sent, so empty chats never clutter the history.
@@ -110,8 +110,8 @@ export default function Advisor() {
     const chatId = ensureChat(t, fresh);
     const prior = fresh ? []
       : chatId === 'dashboard' ? storeRef.current.dashboardChat
-      : chatId === 'advice' ? storeRef.current.adviceChat
-      : storeRef.current.chats.find((c) => c.id === chatId)?.messages || [];
+        : chatId === 'advice' ? storeRef.current.adviceChat
+          : storeRef.current.chats.find((c) => c.id === chatId)?.messages || [];
     const userMsg = chatMessage('user', t);
     dispatch({ type: 'addMessage', chatId, message: userMsg });
     dispatch({ type: 'setTyping', chatId });
@@ -256,71 +256,71 @@ export default function Advisor() {
 
       {showHistory && <div className="drawer-backdrop" onClick={() => setShowHistory(false)} />}
       <aside className={`context-panel${showHistory ? " context-panel--open" : ""}`}>
-          <div className="row" style={{ justifyContent: 'space-between' }}>
-            <div className="eyebrow">CHAT HISTORY</div>
-            <div className="row gap-4">
-              <button className="icon-btn icon-btn--sm" onClick={() => openChat(null)} aria-label="New chat" title="New chat"><Plus size={15} /></button>
-              <button className="icon-btn icon-btn--sm history-toggle" onClick={() => setShowHistory(false)} aria-label="Close history"><X size={15} /></button>
-            </div>
+        <div className="row" style={{ justifyContent: 'space-between' }}>
+          <div className="eyebrow">CHAT HISTORY</div>
+          <div className="row gap-4">
+            <button className="icon-btn icon-btn--sm" onClick={() => openChat(null)} aria-label="New chat" title="New chat"><Plus size={15} /></button>
+            <button className="icon-btn icon-btn--sm history-toggle" onClick={() => setShowHistory(false)} aria-label="Close history"><X size={15} /></button>
           </div>
-          <div className="history-list">
-            <div className={`recent recent--pinned-top${activeChatId === 'dashboard' ? ' recent--active' : ''}`}>
-              <button className="recent__open" onClick={() => openChat('dashboard')}>
-                <LayoutGrid size={15} />
-                <div>
-                  <div className="cell-title">Dashboard · {dayLabel(dashboardDate)}</div>
-                  <div className="cell-sub">
-                    {typingChatId === 'dashboard' ? 'Bijak is typing…'
-                      : dashboardChat.length ? `${whenLabel(pinned.dashboard.updatedAt)} · ${dashboardChat.length} messages` : 'Today · no messages yet'}
-                  </div>
+        </div>
+        <div className="history-list">
+          <div className={`recent recent--pinned-top${activeChatId === 'dashboard' ? ' recent--active' : ''}`}>
+            <button className="recent__open" onClick={() => openChat('dashboard')}>
+              <LayoutGrid size={15} />
+              <div>
+                <div className="cell-title">Dashboard · {dayLabel(dashboardDate)}</div>
+                <div className="cell-sub">
+                  {typingChatId === 'dashboard' ? 'Bijak is typing…'
+                    : dashboardChat.length ? `${whenLabel(pinned.dashboard.updatedAt)} · ${dashboardChat.length} messages` : 'Today · no messages yet'}
                 </div>
-              </button>
-              <Pin size={13} className="recent__pin" aria-label="Pinned" />
-            </div>
-            <div className={`recent recent--pinned${activeChatId === 'advice' ? ' recent--active' : ''}`}>
-              <button className="recent__open" onClick={() => openChat('advice')}>
-                <Lightbulb size={15} />
-                <div>
-                  <div className="cell-title">Today’s advice</div>
-                  <div className="cell-sub">
-                    {typingChatId === 'advice' ? 'Bijak is typing…'
-                      : advice.length ? `${advice.length} suggestion${advice.length === 1 ? '' : 's'} for today` : 'Nothing urgent today'}
-                  </div>
-                </div>
-              </button>
-              {activeChatId === 'advice' && (adviceChat.length > 0 || store.dismissedRecs.length > 0) ? (
-                <button
-                  className="icon-btn icon-btn--sm recent__delete"
-                  aria-label="Reset today’s advice"
-                  title="Clear follow-ups and show dismissed suggestions again"
-                  disabled={typing}
-                  onClick={() => dispatch({ type: 'clearAdviceChat' })}
-                >
-                  <RotateCcw size={14} />
-                </button>
-              ) : (
-                <Pin size={13} className="recent__pin" aria-label="Pinned" />
-              )}
-            </div>
-            {history.map((c) => (
-              <div key={c.id} className={`recent${c.id === activeChatId ? ' recent--active' : ''}`}>
-                <button className="recent__open" onClick={() => openChat(c.id)}>
-                  {c.kind === 'dashboard' ? <LayoutGrid size={15} /> : <MessageSquare size={15} />}
-                  <div>
-                    <div className="cell-title">{c.title}</div>
-                    <div className="cell-sub">{typingChatId === c.id ? 'Bijak is typing…' : `${whenLabel(c.updatedAt)} · ${c.messages.length} messages`}</div>
-                  </div>
-                </button>
-                <button
-                  className="icon-btn icon-btn--sm icon-btn--danger recent__delete"
-                  aria-label={`Delete chat ${c.title}`}
-                  onClick={() => { if (window.confirm('Delete this chat?')) dispatch({ type: 'deleteChat', id: c.id }); }}
-                >
-                  <Trash2 size={14} />
-                </button>
               </div>
-            ))}
+            </button>
+            <Pin size={13} className="recent__pin" aria-label="Pinned" />
           </div>
+          <div className={`recent recent--pinned${activeChatId === 'advice' ? ' recent--active' : ''}`}>
+            <button className="recent__open" onClick={() => openChat('advice')}>
+              <Lightbulb size={15} />
+              <div>
+                <div className="cell-title">Today’s advice</div>
+                <div className="cell-sub">
+                  {typingChatId === 'advice' ? 'Bijak is typing…'
+                    : advice.length ? `${advice.length} suggestion${advice.length === 1 ? '' : 's'} for today` : 'Nothing urgent today'}
+                </div>
+              </div>
+            </button>
+            {activeChatId === 'advice' && (adviceChat.length > 0 || store.dismissedRecs.length > 0) ? (
+              <button
+                className="icon-btn icon-btn--sm recent__delete"
+                aria-label="Reset today’s advice"
+                title="Clear follow-ups and show dismissed suggestions again"
+                disabled={typing}
+                onClick={() => dispatch({ type: 'clearAdviceChat' })}
+              >
+                <RotateCcw size={14} />
+              </button>
+            ) : (
+              <Pin size={13} className="recent__pin" aria-label="Pinned" />
+            )}
+          </div>
+          {history.map((c) => (
+            <div key={c.id} className={`recent${c.id === activeChatId ? ' recent--active' : ''}`}>
+              <button className="recent__open" onClick={() => openChat(c.id)}>
+                {c.kind === 'dashboard' ? <LayoutGrid size={15} /> : <MessageSquare size={15} />}
+                <div>
+                  <div className="cell-title">{c.title}</div>
+                  <div className="cell-sub">{typingChatId === c.id ? 'Bijak is typing…' : `${whenLabel(c.updatedAt)} · ${c.messages.length} messages`}</div>
+                </div>
+              </button>
+              <button
+                className="icon-btn icon-btn--sm icon-btn--danger recent__delete"
+                aria-label={`Delete chat ${c.title}`}
+                onClick={() => { if (window.confirm('Delete this chat?')) dispatch({ type: 'deleteChat', id: c.id }); }}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
 
       </aside>
     </div>
