@@ -3,11 +3,12 @@ import { LayoutGrid, Package, LineChart, Sparkles, Settings } from 'lucide-react
 import { useStore } from '../store/AppStore';
 import { SHOP } from '../data/mockData';
 
-const NAV = [
-  { to: '/', label: 'Dashboard', icon: LayoutGrid, end: true },
-  { to: '/inventory', label: 'Inventory', icon: Package },
-  { to: '/sales', label: 'Sales analysis', icon: LineChart },
-  { to: '/advisor', label: 'AI Advisor', icon: Sparkles, badge: 'advisor' },
+// `short` is the label in the mobile bottom bar.
+export const NAV = [
+  { to: '/', label: 'Dashboard', short: 'Home', icon: LayoutGrid, end: true },
+  { to: '/inventory', label: 'Inventory', short: 'Stock', icon: Package },
+  { to: '/sales', label: 'Sales analysis', short: 'Sales', icon: LineChart },
+  { to: '/advisor', label: 'AI Advisor', short: 'Advisor', icon: Sparkles, badge: 'advisor' },
 ];
 
 export default function Sidebar() {

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  Sparkles, Box, ArrowRight, Database, LineChart, CalendarDays, Paperclip, Upload, Mic, MessageSquare, Trash2, Plus, LayoutGrid, Pin, Lightbulb, RotateCcw,
+  Sparkles, Box, ArrowRight, Database, LineChart, CalendarDays, Paperclip, Upload, Mic, MessageSquare, Trash2, Plus, LayoutGrid, Pin, Lightbulb, RotateCcw, History, X,
 } from 'lucide-react';
 import AdviceCard from '../components/AdviceCard';
 import { useStore } from '../store/AppStore';
@@ -42,6 +42,9 @@ export default function Advisor() {
   const navigate = useNavigate();
   const [input, setInput] = useState('');
   const [picking, setPicking] = useState(false);
+  // Below 1100px the history panel is hidden and opens as a drawer instead.
+  const [showHistory, setShowHistory] = useState(false);
+  const openChat = (id) => { dispatch({ type: 'openChat', id }); setShowHistory(false); };
   const scrollRef = useRef(null);
   const receiptRef = useRef(null);
   const csvRef = useRef(null);
@@ -139,7 +142,8 @@ export default function Advisor() {
             </div>
           </div>
           <div className="row gap-8">
-            <button className="btn btn--outline" disabled={!chat} onClick={() => dispatch({ type: 'openChat', id: null })}>New chat</button>
+            <button className="btn btn--outline history-toggle" onClick={() => setShowHistory(true)} aria-label="Chat history"><History size={16} /><span>History</span></button>
+            <button className="btn btn--outline" aria-label="New chat" disabled={!chat} onClick={() => dispatch({ type: 'openChat', id: null })}><Plus size={16} className="only-mobile" /><span className="hide-mobile">New chat</span></button>
           </div>
         </header>
 
@@ -217,9 +221,9 @@ export default function Advisor() {
             />
             <div className="composer__bar">
               <div className="row gap-4">
-                <button type="button" className="tool-btn" onClick={() => receiptRef.current.click()}><Paperclip size={16} />Attach receipt</button>
+                <button type="button" className="tool-btn" onClick={() => receiptRef.current.click()}><Paperclip size={16} /><span className="tool-btn__label">Attach receipt</span></button>
                 <div className="popover-anchor">
-                  <button type="button" className="tool-btn" onClick={() => setPicking((p) => !p)}><Box size={16} />Pick product</button>
+                  <button type="button" className="tool-btn" onClick={() => setPicking((p) => !p)}><Box size={16} /><span className="tool-btn__label">Pick product</span></button>
                   {picking && (
                     <div className="popover">
                       {products.map((p) => (
@@ -230,7 +234,7 @@ export default function Advisor() {
                     </div>
                   )}
                 </div>
-                <button type="button" className="tool-btn" onClick={() => csvRef.current.click()}><Upload size={16} />Import CSV</button>
+                <button type="button" className="tool-btn" onClick={() => csvRef.current.click()}><Upload size={16} /><span className="tool-btn__label">Import CSV</span></button>
                 <input ref={receiptRef} type="file" accept="image/*,.pdf" hidden onChange={(e) => {
                   if (e.target.files[0]) attachReceipt(e.target.files[0]);
                   e.target.value = '';
@@ -250,14 +254,18 @@ export default function Advisor() {
         </div>
       </div>
 
-      <aside className="context-panel">
+      {showHistory && <div className="drawer-backdrop" onClick={() => setShowHistory(false)} />}
+      <aside className={`context-panel${showHistory ? " context-panel--open" : ""}`}>
           <div className="row" style={{ justifyContent: 'space-between' }}>
             <div className="eyebrow">CHAT HISTORY</div>
-            <button className="icon-btn icon-btn--sm" onClick={() => dispatch({ type: 'openChat', id: null })} aria-label="New chat" title="New chat"><Plus size={15} /></button>
+            <div className="row gap-4">
+              <button className="icon-btn icon-btn--sm" onClick={() => openChat(null)} aria-label="New chat" title="New chat"><Plus size={15} /></button>
+              <button className="icon-btn icon-btn--sm history-toggle" onClick={() => setShowHistory(false)} aria-label="Close history"><X size={15} /></button>
+            </div>
           </div>
           <div className="history-list">
             <div className={`recent recent--pinned-top${activeChatId === 'dashboard' ? ' recent--active' : ''}`}>
-              <button className="recent__open" onClick={() => dispatch({ type: 'openChat', id: 'dashboard' })}>
+              <button className="recent__open" onClick={() => openChat('dashboard')}>
                 <LayoutGrid size={15} />
                 <div>
                   <div className="cell-title">Dashboard · {dayLabel(dashboardDate)}</div>
@@ -270,7 +278,7 @@ export default function Advisor() {
               <Pin size={13} className="recent__pin" aria-label="Pinned" />
             </div>
             <div className={`recent recent--pinned${activeChatId === 'advice' ? ' recent--active' : ''}`}>
-              <button className="recent__open" onClick={() => dispatch({ type: 'openChat', id: 'advice' })}>
+              <button className="recent__open" onClick={() => openChat('advice')}>
                 <Lightbulb size={15} />
                 <div>
                   <div className="cell-title">Today’s advice</div>
@@ -296,7 +304,7 @@ export default function Advisor() {
             </div>
             {history.map((c) => (
               <div key={c.id} className={`recent${c.id === activeChatId ? ' recent--active' : ''}`}>
-                <button className="recent__open" onClick={() => dispatch({ type: 'openChat', id: c.id })}>
+                <button className="recent__open" onClick={() => openChat(c.id)}>
                   {c.kind === 'dashboard' ? <LayoutGrid size={15} /> : <MessageSquare size={15} />}
                   <div>
                     <div className="cell-title">{c.title}</div>

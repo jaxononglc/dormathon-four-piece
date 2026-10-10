@@ -132,7 +132,7 @@ export function StockCatalog() {
 
       <section className="card table-card">
         <div className="table-scroll">
-          <table className="table">
+          <table className="table table--cards">
             <thead>
               <tr>
                 <th>Product / SKU</th>
@@ -183,7 +183,7 @@ export function StockCatalog() {
         </div>
         <div className="table-foot">
           <span>Showing {rows.length} of {products.length} items</span>
-          <span className="row gap-4"><Info size={14} />Tip: use +/− for quick shelf counts, or ✏️ to log a bigger delivery.</span>
+          <span className="row gap-4 hide-mobile"><Info size={14} />Tip: use +/− for quick shelf counts, or ✏️ to log a bigger delivery.</span>
         </div>
       </section>
 

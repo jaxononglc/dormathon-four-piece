@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
+import { MobileTopbar, BottomNav } from './components/MobileNav';
 import Dashboard from './pages/Dashboard';
 import { StockCatalog } from './pages/Inventory';
 import SalesAnalysis from './pages/SalesAnalysis';
@@ -10,6 +11,7 @@ export default function App() {
   return (
     <div className="app">
       <Sidebar />
+      <MobileTopbar />
       <main className="app__main">
         <Routes>
           <Route path="/" element={<Dashboard />} />
@@ -20,6 +22,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
+      <BottomNav />
     </div>
   );
 }
