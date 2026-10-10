@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { CalendarDays, Receipt, Package, PackageX, LineChart as LineIcon, Sparkles, ArrowRight, AlertTriangle, Check, Download } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useSearchParams } from 'react-router-dom';
+import { CalendarDays, Receipt, Package, PackageX, LineChart as LineIcon, AlertTriangle, Check, Download } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
-import { LineChart, Sparkline } from '../components/Charts';
+import { LineChart } from '../components/Charts';
 import { useStore } from '../store/AppStore';
 import { useToast } from '../store/Toast';
 import { MARGIN_TARGET } from '../data/config';
@@ -15,18 +15,43 @@ const SORTS = { revenue: 'Revenue', units: 'Units', margin: 'Margin' };
 export default function SalesAnalysis() {
   const { productsById, products, sales, damage, shop } = useStore();
   const toast = useToast();
-  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const location = useLocation();
-  // ?period=7d|30d|6w (the Dashboard cards link here with 7d)
-  const period = PERIODS[params.get('period')] ? params.get('period') : '6w';
-  const setPeriod = (p) => setParams(p === '6w' ? {} : { period: p }, { replace: true });
+  // ?period=7d|30d|90d|365d (the Dashboard cards link here with 7d), or
+  // ?period=custom&from=yyyy-mm-dd&to=yyyy-mm-dd for a date range picked with the calendar button.
+  const today = localToday();
+  const iso = /^\d{4}-\d{2}-\d{2}$/;
+  const [from, to] = [params.get('from') || '', params.get('to') || ''];
+  const isCustom = params.get('period') === 'custom' && iso.test(from) && iso.test(to) && from <= to && to <= today;
+  const period = isCustom ? 'custom' : PERIODS[params.get('period')] ? params.get('period') : '30d';
+  const custom = isCustom ? { from, to } : null;
+  const setPeriod = (p) => setParams(p === '30d' ? {} : { period: p }, { replace: true });
   const [sort, setSort] = useState('revenue');
   const [done, setDone] = useState({});
 
+  // Date range picker (opens from the calendar button next to 1 week / 1 month / …).
+  const [pickOpen, setPickOpen] = useState(false);
+  const [draft, setDraft] = useState({ from: '', to: '' });
+  const rangeRef = useRef(null);
+  useEffect(() => {
+    if (!pickOpen) return undefined;
+    const close = (e) => { if (!rangeRef.current?.contains(e.target)) setPickOpen(false); };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [pickOpen]);
+  const togglePicker = () => {
+    if (!pickOpen) setDraft({ from: custom?.from || a.start, to: custom?.to || today });
+    setPickOpen((o) => !o);
+  };
+  const draftOk = iso.test(draft.from) && iso.test(draft.to) && draft.from <= draft.to && draft.to <= today;
+  const applyRange = () => {
+    setParams({ period: 'custom', from: draft.from, to: draft.to }, { replace: true });
+    setPickOpen(false);
+  };
+
   const a = useMemo(
-    () => analyse(period, localToday(), { sales, damage, products, productsById, marginTarget: MARGIN_TARGET }),
-    [period, sales, damage, products, productsById]
+    () => analyse(period, today, { sales, damage, products, productsById }, custom),
+    [period, from, to, today, sales, damage, products, productsById] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // #top-products scrolls to that card (used by the Dashboard "Best seller" card).
@@ -35,26 +60,38 @@ export default function SalesAnalysis() {
   }, [location.hash]);
 
   const header = (
-    <header className="topbar">
-      <div className="topbar__title">
-        <h1>Sales analysis</h1>
-        <p className="muted">{shop.name} · {a.range} · {a.compare}</p>
-        {a.daysRecorded < a.totalDays && <p className="muted small topbar__note">Sales recorded on {a.daysRecorded} of {a.totalDays} days</p>}
-      </div>
+    <header className="topbar sales-head">
+      <h1>Sales analysis</h1>
       <div className="topbar__actions">
-        <div className="segmented segmented--dark">
-          {Object.entries(PERIODS).map(([k, v]) => (
-            <button key={k} className={period === k ? 'is-active' : ''} onClick={() => setPeriod(k)}>{v.label}</button>
-          ))}
+        <div className="range-wrap" ref={rangeRef}>
+          <div className="segmented segmented--dark">
+            {Object.entries(PERIODS).map(([k, v]) => (
+              <button key={k} className={period === k ? 'is-active' : ''} onClick={() => { setPickOpen(false); setPeriod(k); }}>{v.label}</button>
+            ))}
+            <button className={`range-btn${isCustom ? ' is-active' : ''}`} onClick={togglePicker} aria-label="Pick a date range" aria-expanded={pickOpen} title="Pick a date range">
+              <CalendarDays size={16} />
+            </button>
+          </div>
+          {isCustom && <div className="range-label">{a.range}</div>}
+          {pickOpen && (
+            <div className="range-pop" role="dialog" aria-label="Pick a date range">
+              <label>From
+                <input type="date" max={draft.to || today} value={draft.from} onChange={(e) => setDraft((d) => ({ ...d, from: e.target.value, to: d.to && e.target.value > d.to ? e.target.value : d.to }))} />
+              </label>
+              <label>To
+                <input type="date" min={draft.from} max={today} value={draft.to} onChange={(e) => setDraft((d) => ({ ...d, to: e.target.value }))} />
+              </label>
+              <button className="btn btn--primary btn--sm" onClick={applyRange} disabled={!draftOk}>Apply</button>
+            </div>
+          )}
         </div>
-        <span className="date-label"><CalendarDays size={16} />{a.range.replace(/ \d{4}$/, '')}</span>
-        <button className="btn btn--outline" onClick={exportReport}><Download size={16} />Export report</button>
+        <button className="btn btn--outline btn--icon" onClick={exportReport} aria-label="Export report" title="Export report"><Download size={18} /></button>
       </div>
     </header>
   );
 
   function exportReport() {
-    downloadCSV(`sales-report-${period}.csv`, [
+    downloadCSV(`sales-report-${isCustom ? `${from}_to_${to}` : period}.csv`, [
       [`${shop.name} — Sales report`, a.range],
       [],
       ['Revenue (RM)', a.revenue], ['Units sold', a.unitsSold], ['Gross profit (RM)', a.grossProfit.toFixed(0)], ['Margin', pct(a.margin)],
@@ -99,17 +136,6 @@ export default function SalesAnalysis() {
         />
       </section>
 
-      <section className="ai-summary">
-        <div className="ai-avatar ai-avatar--lg"><Sparkles size={19} /></div>
-        <div className="ai-summary__text">
-          <div className="strong">Bijak’s summary</div>
-          <p>{a.summary}</p>
-        </div>
-        <button className="btn btn--outline" onClick={() => navigate('/advisor', { state: { ask: 'Which items lose money?' } })}>
-          Ask Advisor <ArrowRight size={16} />
-        </button>
-      </section>
-
       <section className="card card--pad">
         <div className="card__head">
           <div>
@@ -136,24 +162,22 @@ export default function SalesAnalysis() {
             {Object.entries(SORTS).map(([k, v]) => <option key={k} value={k}>Sort: {v}</option>)}
           </select>
         </div>
-        <table className="table table--compact">
+        <table className="table table--compact top-table">
           <thead>
-            <tr><th>#</th><th>Product</th><th>Units</th><th>Damaged</th><th>Revenue</th><th>Margin</th><th>Trend</th></tr>
+            <tr><th>#</th><th>Product</th><th>Units</th><th>Damaged</th><th>Revenue</th><th>Margin</th></tr>
           </thead>
           <tbody>
-            {top.length === 0 && <tr><td colSpan={7} className="empty">No sales in this period.</td></tr>}
+            {top.length === 0 && <tr><td colSpan={6} className="empty">No sales in this period.</td></tr>}
             {top.map((t, i) => {
               const below = t.margin < MARGIN_TARGET;
-              const rising = t.trend[t.trend.length - 1] >= t.trend[0];
               return (
                 <tr key={t.productId}>
                   <td><span className={`rank${i === 0 ? ' rank--first' : ''}`}>{i + 1}</span></td>
                   <td className="cell-title">{t.p.name}</td>
-                  <td>{t.units}</td>
-                  <td className={t.damaged ? 'text-red' : 'muted'}>{t.damaged || '—'}</td>
+                  <td data-label="Units">{t.units}</td>
+                  <td data-label="Damaged" className={t.damaged ? 'text-red' : 'muted'}>{t.damaged || '—'}</td>
                   <td>{rm(t.revenue)}</td>
-                  <td><span className={`tag ${below ? 'tag--red' : 'tag--green'}`}>{pct(t.margin)}</span></td>
-                  <td><Sparkline values={t.trend} color={below ? '#d97706' : rising ? '#059669' : '#dc2626'} /></td>
+                  <td data-label="Margin"><span className={`tag ${below ? 'tag--red' : 'tag--green'}`}>{pct(t.margin)}</span></td>
                 </tr>
               );
             })}
@@ -179,7 +203,11 @@ export default function SalesAnalysis() {
                   <div className={`margin-row__bar${m < MARGIN_TARGET ? ' is-below' : ''}`} style={{ width: `${Math.max(0, Math.min(100, m * 100 / 0.6))}%` }} />
                   <div className="margin-row__target" style={{ left: `${MARGIN_TARGET * 100 / 0.6}%` }} />
                 </div>
-                <b className={m < MARGIN_TARGET ? 'text-red' : ''}>{pct(m)}</b>
+                <div className="margin-row__val">
+                  <b className={m < MARGIN_TARGET ? 'text-red' : ''}>{pct(m)}</b>
+                  {/* phone only: how far from the target */}
+                  <small className={m < MARGIN_TARGET ? 'text-red' : 'text-green'}>{m < MARGIN_TARGET ? '−' : '+'}{Math.round(Math.abs(m - MARGIN_TARGET) * 100)} pts</small>
+                </div>
               </div>
             ))}
           </div>

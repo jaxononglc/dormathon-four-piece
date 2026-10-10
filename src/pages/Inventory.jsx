@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { AlertTriangle, CircleAlert, Box, Search, Download, Pencil, Trash2, Info, Plus, Wallet, X, History } from 'lucide-react';
+import { AlertTriangle, CircleAlert, Box, Search, Download, Pencil, Trash2, Info, Plus, Wallet, X, History, MoreVertical } from 'lucide-react';
 import StatusPill from '../components/StatusPill';
 import StockForm from '../components/StockForm';
 import StockLogModal from '../components/StockLogModal';
@@ -89,6 +89,14 @@ export function StockCatalog() {
   const [editing, setEditing] = useState(null); // product | 'new' | null
   const [deleting, setDeleting] = useState(null);
   const [logging, setLogging] = useState(null); // product whose log is open
+  // Phone: the ⋮ menu of one product card is open (id), closed by tapping anywhere else.
+  const [menuId, setMenuId] = useState(null);
+  useEffect(() => {
+    if (!menuId) return undefined;
+    const close = (e) => { if (!e.target.closest('.row-menu')) setMenuId(null); };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [menuId]);
 
   const q = query.toLowerCase();
   const rows = products.filter(
@@ -125,10 +133,10 @@ export function StockCatalog() {
           {Object.entries(LEVELS).map(([v, label]) => <option key={v} value={v}>{label}</option>)}
         </select>
         {filtered && (
-          <button className="btn btn--ghost btn--sm" onClick={() => setParams({}, { replace: true })}><X size={14} />Clear</button>
+          <button className="btn btn--ghost btn--sm btn--icon-mobile" onClick={() => setParams({}, { replace: true })} title="Clear filters" aria-label="Clear filters"><X size={14} /><span>Clear</span></button>
         )}
-        <button className="btn btn--soft btn--sm" onClick={() => setEditing('new')}><Plus size={14} />Add new product</button>
-        <button className="btn btn--soft btn--sm" onClick={exportCSV}><Download size={14} />Export CSV</button>
+        <button className="btn btn--soft btn--sm btn--icon-mobile" onClick={() => setEditing('new')} title="Add new product" aria-label="Add new product"><Plus size={14} /><span>Add new product</span></button>
+        <button className="btn btn--soft btn--sm btn--icon-mobile" onClick={exportCSV} title="Export CSV" aria-label="Export CSV"><Download size={14} /><span>Export CSV</span></button>
       </section>
 
       <section className="card table-card">
@@ -151,23 +159,37 @@ export function StockCatalog() {
                 return (
                   <tr key={p.id} className={`row--${s}`}>
                     <td>
-                      <div className="cell-title">{p.name}</div>
+                      <div className="cell-title"><span className="cell-title__name" title={p.name}>{p.name}</span>{p.category && <span className="badge badge--inline">{p.category}</span>}</div>
                       <div className="cell-sub"><span className="sku">{p.sku}</span>{p.location && <>Loc: {p.location}</>}</div>
                     </td>
                     <td><span className="badge">{p.category}</span></td>
-                    <td className="center">
+                    <td className="center" data-label="In stock">
                       <div className={`qty qty--${s}`}>{p.stock} <small>{p.unit}</small></div>
                       <div className="cell-sub">Min: {p.min}</div>
                     </td>
                     <td className="pricing">
-                      <div>Cost: <b>{rm2(p.cost)}</b></div>
-                      <div>Sell: <b>{p.price != null ? rm2(p.price) : 'not sold'}</b></div>
+                      <div><span className="lbl">Cost</span><b>{rm2(p.cost)}</b></div>
+                      <div><span className="lbl">Sell</span><b>{p.price != null ? rm2(p.price) : 'not sold'}</b></div>
                     </td>
                     <td><StatusPill product={p} /></td>
                     <td className="right">
-                      <button className="icon-btn" onClick={() => setLogging(p)} aria-label={`Log for ${p.name}`} title="Log"><History size={16} /></button>
-                      <button className="icon-btn" onClick={() => setEditing(p)} aria-label={`Edit ${p.name}`} title="Edit"><Pencil size={16} /></button>
-                      <button className="icon-btn icon-btn--danger" onClick={() => setDeleting(p)} aria-label={`Delete ${p.name}`}><Trash2 size={16} /></button>
+                      {/* Desktop: three icon buttons */}
+                      <span className="row-actions">
+                        <button className="icon-btn" onClick={() => setLogging(p)} aria-label={`Log for ${p.name}`} title="Log"><History size={16} /></button>
+                        <button className="icon-btn" onClick={() => setEditing(p)} aria-label={`Edit ${p.name}`} title="Edit"><Pencil size={16} /></button>
+                        <button className="icon-btn icon-btn--danger" onClick={() => setDeleting(p)} aria-label={`Delete ${p.name}`}><Trash2 size={16} /></button>
+                      </span>
+                      {/* Phone: one ⋮ button that opens the same three actions */}
+                      <span className="row-menu">
+                        <button className="icon-btn" onClick={() => setMenuId(menuId === p.id ? null : p.id)} aria-label={`Actions for ${p.name}`} aria-expanded={menuId === p.id}><MoreVertical size={18} /></button>
+                        {menuId === p.id && (
+                          <div className="row-menu__list" role="menu">
+                            <button role="menuitem" onClick={() => { setMenuId(null); setLogging(p); }}><History size={16} />History</button>
+                            <button role="menuitem" onClick={() => { setMenuId(null); setEditing(p); }}><Pencil size={16} />Edit</button>
+                            <button role="menuitem" className="is-danger" onClick={() => { setMenuId(null); setDeleting(p); }}><Trash2 size={16} />Delete</button>
+                          </div>
+                        )}
+                      </span>
                     </td>
                   </tr>
                 );

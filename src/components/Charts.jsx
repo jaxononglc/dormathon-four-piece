@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { rm } from '../lib/format';
 
 const kfmt = (v) => (v >= 1000 ? `${+(v / 1000).toFixed(1)}k` : String(v));
@@ -66,10 +66,25 @@ export function BarChart({ data, height = 230, defaultIndex }) {
 }
 
 // Line + area for current period, dashed line for previous period.
-export function LineChart({ labels, current, previous, height = 250 }) {
+// The SVG is drawn at the width it is shown at, so text and lines keep their real size on a
+// phone (a fixed 1000-wide drawing shrunk to ~300px made everything tiny). On narrow
+// screens it is a bit shorter and only some x labels are shown so they never overlap.
+export function LineChart({ labels, current, previous, height: heightProp = 250 }) {
   const [hover, setHover] = useState(null);
-  const W = 1000;
-  const pad = { l: 44, r: 16, t: 20, b: 30 };
+  const wrapRef = useRef(null);
+  const [W, setW] = useState(1000);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return undefined;
+    const measure = () => setW(Math.max(260, Math.round(el.clientWidth)) || 1000);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const small = W < 560;
+  const height = small ? 220 : heightProp;
+  const pad = small ? { l: 36, r: 14, t: 16, b: 30 } : { l: 44, r: 16, t: 20, b: 30 };
   const all = [...current, ...previous];
   const ticks = niceTicks(Math.min(...all) * 0.9, Math.max(...all) * 1.05);
   const lo = ticks[0];
@@ -80,12 +95,16 @@ export function LineChart({ labels, current, previous, height = 250 }) {
   const y = (v) => pad.t + innerH - ((v - lo) / (hi - lo)) * innerH;
   const path = (vals) => vals.map((v, i) => `${i ? 'L' : 'M'}${x(i)},${y(v)}`).join(' ');
   const area = `${path(current)} L${x(current.length - 1)},${y(lo)} L${x(0)},${y(lo)} Z`;
-  // Tooltip and guide line only while hovering a point.
+  // Show every k-th label (always the last) so neighbours keep about 56px apart.
+  const every = Math.max(1, Math.ceil(labels.length / Math.max(2, Math.floor(innerW / 56))));
+  const showLabel = (i) => (labels.length - 1 - i) % every === 0;
+  const showDots = labels.length <= 14;
+  // Tooltip and guide line only while hovering (or tapping) a point.
   const active = hover;
   const change = active != null && previous[active] ? current[active] / previous[active] - 1 : 0;
 
   return (
-    <div className="chart">
+    <div className="chart" ref={wrapRef}>
       <svg viewBox={`0 0 ${W} ${height}`} width="100%" role="img" aria-label="Revenue trend">
         <defs>
           <linearGradient id="areaFill" x1="0" x2="0" y1="0" y2="1">
@@ -104,10 +123,12 @@ export function LineChart({ labels, current, previous, height = 250 }) {
         <path d={path(current)} className="line line--current" />
         {active != null && <line x1={x(active)} x2={x(active)} y1={pad.t} y2={y(lo)} className="guide" />}
         {current.map((v, i) => (
-          <g key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
+          <g key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} onClick={() => setHover(i)}>
             <rect x={x(i) - innerW / labels.length / 2} y={0} width={innerW / labels.length} height={height} fill="transparent" />
-            <circle cx={x(i)} cy={y(v)} r={i === active ? 6 : 4} className="dot" />
-            <text x={x(i)} y={height - 8} textAnchor="middle" className="xlabel">{labels[i]}</text>
+            {(showDots || i === active) && <circle cx={x(i)} cy={y(v)} r={i === active ? 6 : small ? 3.5 : 4} className="dot" />}
+            {showLabel(i) && (
+              <text x={x(i)} y={height - 8} textAnchor={small && i === 0 ? 'start' : small && i === labels.length - 1 ? 'end' : 'middle'} className="xlabel">{labels[i]}</text>
+            )}
           </g>
         ))}
       </svg>
@@ -126,18 +147,5 @@ export function LineChart({ labels, current, previous, height = 250 }) {
         </div>
       )}
     </div>
-  );
-}
-
-export function Sparkline({ values, color = '#059669', width = 80, height = 24 }) {
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const pts = values
-    .map((v, i) => `${(i / (values.length - 1)) * (width - 2) + 1},${height - 2 - ((v - min) / (max - min || 1)) * (height - 4)}`)
-    .join(' ');
-  return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
-      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
   );
 }

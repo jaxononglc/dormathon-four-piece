@@ -3,7 +3,7 @@ import { Receipt, ChevronLeft, ChevronRight, CalendarDays, Search, Check, Minus,
 import Modal from './Modal';
 import { useStore, dayTotals, newSaleId } from '../store/AppStore';
 import { useToast } from '../store/Toast';
-import { addDays, dayLabel, dayNum, dayShort, localToday, rm, rm2, weekStart } from '../lib/format';
+import { addDays, dayLabel, dayNum, dayShort, localToday, parseISO, rm, rm2 } from '../lib/format';
 import { scanSalesRecord, SURE } from '../lib/scan';
 
 const nonZero = (lines) => Object.fromEntries(Object.entries(lines).filter(([, u]) => u > 0));
@@ -14,7 +14,6 @@ const same = (a, b) => JSON.stringify(Object.entries(a).sort()) === JSON.stringi
 export default function DailySalesModal({ onClose, initialDate = localToday() }) {
   const { products, productsById, sales, salesRecords, damage, categories, aiEnabled, dispatch } = useStore();
   const toast = useToast();
-  const dateInput = useRef(null);
   const photoInput = useRef(null);
 
   const [date, setDate] = useState(initialDate);
@@ -152,7 +151,40 @@ export default function DailySalesModal({ onClose, initialDate = localToday() })
 
   const totals = dayTotals(shown, productsById);
   const damagedUnits = Object.values(shownDam).reduce((s, u) => s + (u || 0), 0);
-  const week = Array.from({ length: 7 }, (_, i) => addDays(weekStart(date), i));
+  // The day row shows the whole month of the selected date; the stepper above moves
+  // a month at a time (to the last day you can pick in that month).
+  const monthStart = `${date.slice(0, 7)}-01`;
+  const [year, month] = date.split('-').map(Number);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const monthDays = Array.from({ length: daysInMonth }, (_, i) => addDays(monthStart, i));
+  const monthLabel = parseISO(date).toLocaleDateString('en-MY', { month: 'long', year: 'numeric' });
+  const prevMonthDay = addDays(monthStart, -1);
+  const nextMonthStart = addDays(monthStart, daysInMonth);
+  const nextMonthDay = nextMonthStart > localToday() ? null
+    : [addDays(nextMonthStart, new Date(year, month + 1, 0).getDate() - 1), localToday()].sort()[0];
+
+  // The month is one scrolling row (about 4 days visible on mobile, 7 on desktop)
+  // with ← / → buttons.
+  const stripRef = useRef(null);
+  const [canScroll, setCanScroll] = useState({ prev: false, next: false });
+  const updateArrows = () => {
+    const el = stripRef.current;
+    if (!el) return;
+    setCanScroll({ prev: el.scrollLeft > 2, next: el.scrollLeft + el.clientWidth < el.scrollWidth - 2 });
+  };
+  const scrollDays = (dir) => {
+    const el = stripRef.current;
+    if (el) el.scrollBy({ left: dir * el.clientWidth, behavior: 'smooth' });
+  };
+  // Keep the selected day in view (centred) when the date changes or the modal opens.
+  useEffect(() => {
+    const el = stripRef.current;
+    const chip = el?.querySelector('.day-chip--selected');
+    if (chip) el.scrollLeft = chip.offsetLeft - (el.clientWidth - chip.offsetWidth) / 2;
+    updateArrows();
+    window.addEventListener('resize', updateArrows);
+    return () => window.removeEventListener('resize', updateArrows);
+  }, [date]);
 
   // Saved to the database through the store (addSale / editSale / saveDamage in lib/api.js).
   function save() {
@@ -242,29 +274,29 @@ export default function DailySalesModal({ onClose, initialDate = localToday() })
       <div className="sales-dates">
         <div className="sales-dates__controls">
           <div className="day-stepper">
-            <button className="icon-btn icon-btn--sm" onClick={() => goTo(addDays(date, -1))} aria-label="Previous day"><ChevronLeft size={16} /></button>
-            <b>{isToday ? `Today, ${dayLabel(date)}` : dayLabel(date)}</b>
-            <button className="icon-btn icon-btn--sm" onClick={() => goTo(addDays(date, 1))} disabled={date >= localToday()} aria-label="Next day"><ChevronRight size={16} /></button>
+            <button className="icon-btn icon-btn--sm" onClick={() => goTo(prevMonthDay)} aria-label="Previous month"><ChevronLeft size={16} /></button>
+            {/* Tap the month to pick any date (the native date picker sits invisibly on top). */}
+            <label className="day-stepper__pick" title="Pick a date">
+              <b>{monthLabel}</b>
+              <CalendarDays size={15} />
+              <input
+                type="date"
+                max={localToday()}
+                value={date}
+                onChange={(e) => e.target.value && goTo(e.target.value)}
+                aria-label="Pick a date"
+              />
+            </label>
+            <button className="icon-btn icon-btn--sm" onClick={() => goTo(nextMonthDay)} disabled={!nextMonthDay} aria-label="Next month"><ChevronRight size={16} /></button>
           </div>
-          <button className="btn btn--outline btn--sm" onClick={() => {
-            const el = dateInput.current;
-            if (el?.showPicker) el.showPicker(); else el?.focus();
-          }}>
-            <CalendarDays size={16} />Pick a date
-          </button>
-          <input
-            ref={dateInput}
-            type="date"
-            className="visually-hidden"
-            max={localToday()}
-            value={date}
-            onChange={(e) => e.target.value && goTo(e.target.value)}
-            tabIndex={-1}
-          />
           {status}
         </div>
-        <div className="week-strip">
-          {week.map((d) => {
+        <div className="week-scroller">
+        <button className="icon-btn week-scroller__arrow" onClick={() => scrollDays(-1)} disabled={!canScroll.prev} aria-label="Earlier days">
+          <ChevronLeft size={18} />
+        </button>
+        <div className="week-strip" ref={stripRef} onScroll={updateArrows}>
+          {monthDays.map((d) => {
             const t = dayTotals(sales[d], productsById);
             const future = d > localToday();
             const recorded = t.units > 0;
@@ -283,6 +315,10 @@ export default function DailySalesModal({ onClose, initialDate = localToday() })
               </button>
             );
           })}
+        </div>
+        <button className="icon-btn week-scroller__arrow" onClick={() => scrollDays(1)} disabled={!canScroll.next} aria-label="Later days">
+          <ChevronRight size={18} />
+        </button>
         </div>
       </div>
 
@@ -417,16 +453,16 @@ function GroupRows({ group, draft, damaged, locked, available, setUnits, setDama
                 </div>
               )}
             </td>
-            <td className="center">
+            <td className="center" data-label="Units sold">
               <Stepper value={units} max={units + left} locked={locked} disabled={avail === 0} onChange={(v) => setUnits(p, v)} label={`Units of ${p.name} sold`} />
             </td>
-            <td className="center">
+            <td className="center" data-label="Damaged">
               <Stepper value={dmg} max={dmg + left} locked={locked} disabled={avail === 0} onChange={(v) => setDamaged(p, v)} label={`Units of ${p.name} damaged`} tone="damage" />
             </td>
-            <td className="right muted">{rm2(p.price)}</td>
-            <td className="right">{units > 0 ? <b>{rm2(units * p.price)}</b> : <span className="dash">—</span>}</td>
+            <td className="right muted" data-label="Price each">{rm2(p.price)}</td>
+            <td className="right" data-label="Sales">{units > 0 ? <b>{rm2(units * p.price)}</b> : <span className="dash">—</span>}</td>
             {/* A saved (locked) day's units are already out of stock. */}
-            <td className={`right ${units > 0 || dmg > 0 ? 'strong' : 'muted'}`}>{locked ? avail : left}</td>
+            <td data-label="Stock after" className={`right ${units > 0 || dmg > 0 ? 'strong' : 'muted'}`}>{locked ? avail : left}</td>
           </tr>
         );
       })}

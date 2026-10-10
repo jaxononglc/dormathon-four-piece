@@ -155,7 +155,7 @@ export default function Dashboard() {
         </section>
       </div>
 
-      <aside className="ai-panel">
+      <aside className="ai-panel hide-mobile">
         <div className="ai-panel__head">
           <div className="ai-avatar ai-avatar--lg"><Sparkles size={20} /></div>
           <div>
