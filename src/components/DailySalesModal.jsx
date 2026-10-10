@@ -1,20 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Receipt, ChevronLeft, ChevronRight, CalendarDays, Search, Check, Minus, Plus, CircleDashed, CheckCircle2, Camera, Loader2, ScanText, X } from 'lucide-react';
+import { Receipt, ChevronLeft, ChevronRight, CalendarDays, Search, Check, Minus, Plus, CircleDashed, CheckCircle2, Camera, Loader2, ScanText, X, Pencil, Trash2 } from 'lucide-react';
 import Modal from './Modal';
-import { useStore, dayTotals } from '../store/AppStore';
+import { useStore, dayTotals, newSaleId } from '../store/AppStore';
 import { useToast } from '../store/Toast';
-import { TODAY } from '../data/mockData';
-import { addDays, dayLabel, dayNum, dayShort, rm, rm2, weekStart } from '../lib/format';
+import { addDays, dayLabel, dayNum, dayShort, localToday, rm, rm2, weekStart } from '../lib/format';
 import { scanSalesRecord, SURE } from '../lib/scan';
 
-export default function DailySalesModal({ onClose, initialDate = TODAY }) {
-  const { products, productsById, sales, categories, aiEnabled, dispatch } = useStore();
+const nonZero = (lines) => Object.fromEntries(Object.entries(lines).filter(([, u]) => u > 0));
+const same = (a, b) => JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
+
+// One record per day: units sold (Sales) and damaged goods ("DamageLog"). The form
+// starts at 0; a day that is already saved shows its numbers locked until Edit.
+export default function DailySalesModal({ onClose, initialDate = localToday() }) {
+  const { products, productsById, sales, salesRecords, damage, categories, aiEnabled, dispatch } = useStore();
   const toast = useToast();
   const dateInput = useRef(null);
   const photoInput = useRef(null);
 
   const [date, setDate] = useState(initialDate);
-  const [draft, setDraft] = useState(() => ({ ...(sales[initialDate] || {}) }));
+  const [draft, setDraft] = useState({}); // units sold
+  const [damDraft, setDamDraft] = useState({}); // units damaged
+  const [editingDay, setEditingDay] = useState(false);
   const [query, setQuery] = useState('');
   const [onlySold, setOnlySold] = useState(false);
   // Last photo read by AI: { result, photo (object URL), marks: { [productId]: { rawText, confidence, wanted, units } } }
@@ -26,27 +32,65 @@ export default function DailySalesModal({ onClose, initialDate = TODAY }) {
   useEffect(() => () => photoUrl && URL.revokeObjectURL(photoUrl), [photoUrl]);
 
   const saved = sales[date] || {};
-  const dirty = JSON.stringify(clean(draft)) !== JSON.stringify(clean(saved));
-  const isToday = date === TODAY;
+  const dayRecord = salesRecords.find((r) => r.date === date) || null;
+  const savedDamage = damage[date] || {};
+  const daySaved = Boolean(dayRecord) || Object.keys(savedDamage).length > 0;
+  const editing = daySaved && editingDay;
+  const locked = daySaved && !editingDay;
+  // A saved day shows its saved numbers (read-only) until Edit is pressed.
+  const shown = locked ? dayRecord?.lines || {} : draft;
+  const shownDam = locked ? savedDamage : damDraft;
+  // What the day had before this edit; those units count as available again.
+  const base = editing ? dayRecord?.lines || {} : {};
+  const baseDam = editing ? savedDamage : {};
+  const entered = nonZero(draft);
+  const enteredDam = nonZero(damDraft);
+  const salesChanged = !same(entered, base);
+  const damageChanged = !same(enteredDam, baseDam);
+  const dirty = salesChanged || damageChanged;
+  const isToday = date === localToday();
+  const dayName = isToday ? 'today' : dayLabel(date);
 
-  function clean(lines) {
-    return Object.fromEntries(Object.entries(lines).filter(([, u]) => u > 0).sort());
+  const discardOk = () => !dirty || window.confirm('You have unsaved changes. Discard them?');
+
+  // Back to an empty form.
+  function reset() {
+    setEditingDay(false);
+    setDraft({});
+    setDamDraft({});
+    setScan(null);
+    setOnlySold(false);
   }
 
   function goTo(next) {
-    if (next > TODAY || next === date) return;
-    if (dirty && !window.confirm('You have unsaved sales for this day. Discard them?')) return;
+    if (next > localToday() || next === date || !discardOk()) return;
     setDate(next);
-    setDraft({ ...(sales[next] || {}) });
-    setScan(null);
+    reset();
   }
 
-  // What can be sold on this day = stock now + what this day already took out.
-  const available = (p) => p.stock + (saved[p.id] || 0);
+  function startEdit() {
+    setEditingDay(true);
+    setDraft({ ...(dayRecord?.lines || {}) });
+    setDamDraft({ ...savedDamage });
+    setScan(null);
+    setQuery('');
+    setOnlySold(true);
+  }
 
+  // Stock can change while the modal is open (other screens, other devices), so this
+  // always reads the live stock. While editing, the day's own units count as available.
+  const available = (p) => p.stock + (base[p.id] || 0) + (baseDam[p.id] || 0);
+
+  // Sold + damaged can't be more than what is available.
+  // Backspace on the last digit leaves 0; the next digit typed replaces it ("05" → 5).
+  const clamp = (value, max) => Math.max(0, Math.min(max, Math.floor(Number(value) || 0)));
   const setUnits = (p, value) => {
-    const n = Math.max(0, Math.min(available(p), Math.floor(Number(value) || 0)));
-    setDraft((d) => ({ ...d, [p.id]: n }));
+    if (locked) return;
+    setDraft((d) => ({ ...d, [p.id]: clamp(value, available(p) - (damDraft[p.id] || 0)) }));
+  };
+  const setDamaged = (p, value) => {
+    if (locked) return;
+    setDamDraft((d) => ({ ...d, [p.id]: clamp(value, available(p) - (draft[p.id] || 0)) }));
   };
 
   const sellable = useMemo(() => {
@@ -54,23 +98,31 @@ export default function DailySalesModal({ onClose, initialDate = TODAY }) {
     return products
       .filter((p) => p.price != null)
       .filter((p) => !q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q))
-      .filter((p) => !onlySold || (draft[p.id] || 0) > 0);
-  }, [products, query, onlySold, draft]);
+      // A product stays listed once it has been touched, so clearing it to 0 doesn't hide the row.
+      .filter((p) => !onlySold || p.id in shown || p.id in shownDam);
+  }, [products, query, onlySold, shown, shownDam]);
 
   // Baked goods first (they are what gets sold), then the rest in saved order.
   const order = ['Baked goods', ...categories.filter((c) => c !== 'Baked goods')];
   const groups = order.map((c) => ({ category: c, items: sellable.filter((p) => p.category === c).sort((a, b) => a.name.localeCompare(b.name)) }))
     .filter((g) => g.items.length);
 
-  // Fill the table from a scan. Nothing is saved until the user presses Save.
+  // Fill the table from a scan, starting from 0. On a day that is already saved the
+  // paper replaces its record (edit mode). Nothing is saved until the user presses Save.
   function applyScan(result, photo, forDate) {
-    const savedFor = sales[forDate] || {};
-    const next = forDate === date ? { ...draft } : { ...savedFor };
+    const existing = salesRecords.find((r) => r.date === forDate) || null;
+    const dam = damage[forDate] || {};
+    const own = existing?.lines || {};
+    // The paper only has sales; the day's damaged goods stay as they are.
+    setEditingDay(Boolean(existing) || Object.keys(dam).length > 0);
+    setDamDraft({ ...dam });
+    const next = {};
     const marks = {};
     for (const it of result.items) {
       const p = productsById[it.productId];
       if (!p || p.price == null) continue;
-      const units = Math.min(it.units, p.stock + (savedFor[p.id] || 0));
+      const units = Math.min(it.units, p.stock + (own[p.id] || 0));
+      // (damaged units of a saved day are already out of stock, so p.stock is the right limit)
       next[p.id] = units;
       marks[p.id] = { rawText: it.rawText, confidence: it.confidence, wanted: it.units, units };
     }
@@ -84,10 +136,10 @@ export default function DailySalesModal({ onClose, initialDate = TODAY }) {
   async function onPhoto(e) {
     const file = e.target.files?.[0];
     e.target.value = ''; // so the same photo can be picked again
-    if (!file) return;
+    if (!file || !discardOk()) return;
     setScanning(true);
     try {
-      const result = await scanSalesRecord(file, products.filter((p) => p.price != null), TODAY);
+      const result = await scanSalesRecord(file, products.filter((p) => p.price != null), localToday());
       applyScan(result, URL.createObjectURL(file), date);
       const n = result.items.length;
       toast(n ? `Read ${n} product${n === 1 ? '' : 's'} from the photo. Check them, then save` : 'No sales found in the photo');
@@ -98,40 +150,92 @@ export default function DailySalesModal({ onClose, initialDate = TODAY }) {
     }
   }
 
-  const totals = dayTotals(draft, productsById);
+  const totals = dayTotals(shown, productsById);
+  const damagedUnits = Object.values(shownDam).reduce((s, u) => s + (u || 0), 0);
   const week = Array.from({ length: 7 }, (_, i) => addDays(weekStart(date), i));
 
+  // Saved to the database through the store (addSale / editSale / saveDamage in lib/api.js).
   function save() {
-    dispatch({ type: 'saveSales', date, lines: draft });
-    toast(`Saved ${totals.units} units (${rm2(totals.sales)}) for ${isToday ? 'today' : dayLabel(date)}`);
-    onClose();
+    if (salesChanged) {
+      if (dayRecord) dispatch({ type: 'editSale', id: dayRecord.id, lines: entered });
+      else dispatch({ type: 'addSale', sale: { id: newSaleId(), date, at: Date.now(), lines: entered } });
+    }
+    if (damageChanged) dispatch({ type: 'saveDamage', date, lines: enteredDam });
+    const damNote = damagedUnits ? `, ${damagedUnits} damaged` : '';
+    toast(editing ? `Updated ${dayName}${damNote}. Stock adjusted` : `Saved ${totals.units} sold (${rm2(totals.sales)})${damNote} for ${dayName}`);
+    reset();
   }
 
+  function deleteRecord() {
+    if (!window.confirm(`Delete all sales and damaged goods for ${dayName}? The units go back into stock.`)) return;
+    if (dayRecord) dispatch({ type: 'editSale', id: dayRecord.id, lines: {} });
+    if (Object.keys(savedDamage).length) dispatch({ type: 'saveDamage', date, lines: {} });
+    toast(`Deleted ${dayName}'s record. Stock returned`);
+    reset();
+  }
+
+  const savedSales = dayTotals(saved, productsById).sales;
   let status;
-  if (dirty) status = <span className="chip chip--amber"><CircleDashed size={14} />Unsaved changes</span>;
-  else if (Object.keys(clean(saved)).length) status = <span className="chip chip--green"><CheckCircle2 size={14} />Saved · {rm(dayTotals(saved, productsById).sales)}</span>;
-  else status = <span className="chip chip--amber"><CircleDashed size={14} />Nothing entered yet</span>;
+  if (dirty) status = <span className="chip chip--amber"><CircleDashed size={14} />Not saved yet</span>;
+  else if (daySaved) status = <span className="chip chip--green"><CheckCircle2 size={14} />Recorded · {rm(savedSales)}</span>;
+  else status = <span className="chip chip--amber"><CircleDashed size={14} />Nothing recorded yet</span>;
 
   return (
     <Modal
       className="sales-modal"
       title="Record daily sales"
-      subtitle="Type how many of each product you sold. Stock updates when you save."
+      subtitle="Enter what you sold and save. Each day has one record, and stock updates right away."
       icon={<Receipt size={22} />}
+      actions={
+        <>
+          <button
+            className="btn btn--outline btn--sm"
+            onClick={() => photoInput.current?.click()}
+            disabled={!aiEnabled || scanning}
+            title={aiEnabled ? 'Take or upload a photo of a handwritten sales record' : 'Needs Gemini (GEMINI_API_KEY on the server)'}
+          >
+            {scanning ? <Loader2 size={16} className="spin" /> : <Camera size={16} />}
+            <span className="hide-sm">{scanning ? 'Reading photo…' : 'Scan paper record'}</span>
+          </button>
+          <input ref={photoInput} type="file" accept="image/*,.heic,.heif" className="visually-hidden" onChange={onPhoto} tabIndex={-1} />
+        </>
+      }
       onClose={onClose}
       width={1100}
       footer={
         <>
           <div className="sales-totals">
             <span>Units <b>{totals.units}</b></span>
+            <span>Damaged <b className={damagedUnits ? 'text-red' : ''}>{damagedUnits}</b></span>
             <span>Sales <b>{rm2(totals.sales)}</b></span>
             <span>Profit <b className="text-green">{rm2(totals.profit)}</b></span>
           </div>
-          <button className="btn btn--ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn--primary" onClick={save} disabled={!dirty}>
-            <Check size={18} strokeWidth={2.5} />
-            Save sales for {isToday ? 'today' : dayLabel(date)}
-          </button>
+          {editing ? (
+            <>
+              <button className="btn btn--ghost text-red" onClick={deleteRecord}><Trash2 size={16} />Delete day’s record</button>
+              <button className="btn btn--ghost" onClick={() => discardOk() && reset()}>Cancel edit</button>
+              <button className="btn btn--primary" onClick={save} disabled={!dirty}>
+                <Check size={18} strokeWidth={2.5} />
+                Save changes
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="btn btn--ghost" onClick={() => discardOk() && onClose()}>Close</button>
+              {/* A saved day has one record: Edit replaces Save. */}
+              {daySaved ? (
+                <button className="btn btn--primary" onClick={startEdit}>
+                  <Pencil size={18} strokeWidth={2.5} />
+                  Edit sale for {dayName}
+                </button>
+              ) : (
+                <button className="btn btn--primary" onClick={save} disabled={!dirty}>
+                  <Check size={18} strokeWidth={2.5} />
+                  Save sale for {dayName}
+                </button>
+              )}
+            </>
+          )}
         </>
       }
     >
@@ -140,7 +244,7 @@ export default function DailySalesModal({ onClose, initialDate = TODAY }) {
           <div className="day-stepper">
             <button className="icon-btn icon-btn--sm" onClick={() => goTo(addDays(date, -1))} aria-label="Previous day"><ChevronLeft size={16} /></button>
             <b>{isToday ? `Today, ${dayLabel(date)}` : dayLabel(date)}</b>
-            <button className="icon-btn icon-btn--sm" onClick={() => goTo(addDays(date, 1))} disabled={date >= TODAY} aria-label="Next day"><ChevronRight size={16} /></button>
+            <button className="icon-btn icon-btn--sm" onClick={() => goTo(addDays(date, 1))} disabled={date >= localToday()} aria-label="Next day"><ChevronRight size={16} /></button>
           </div>
           <button className="btn btn--outline btn--sm" onClick={() => {
             const el = dateInput.current;
@@ -152,7 +256,7 @@ export default function DailySalesModal({ onClose, initialDate = TODAY }) {
             ref={dateInput}
             type="date"
             className="visually-hidden"
-            max={TODAY}
+            max={localToday()}
             value={date}
             onChange={(e) => e.target.value && goTo(e.target.value)}
             tabIndex={-1}
@@ -162,7 +266,7 @@ export default function DailySalesModal({ onClose, initialDate = TODAY }) {
         <div className="week-strip">
           {week.map((d) => {
             const t = dayTotals(sales[d], productsById);
-            const future = d > TODAY;
+            const future = d > localToday();
             const recorded = t.units > 0;
             return (
               <button
@@ -171,7 +275,7 @@ export default function DailySalesModal({ onClose, initialDate = TODAY }) {
                 disabled={future}
                 onClick={() => goTo(d)}
               >
-                <span className="day-chip__day">{d === TODAY ? 'Today' : dayShort(d)}</span>
+                <span className="day-chip__day">{d === localToday() ? 'Today' : dayShort(d)}</span>
                 <span className="day-chip__num">{dayNum(d)}</span>
                 <span className={`day-chip__status ${future ? '' : recorded ? 'text-green' : 'text-amber'}`}>
                   {future ? '—' : recorded ? rm(t.sales) : 'Missing'}
@@ -183,6 +287,23 @@ export default function DailySalesModal({ onClose, initialDate = TODAY }) {
       </div>
 
       <div className="modal__body sales-body">
+        {editing && (
+          <div className="edit-note">
+            <Pencil size={16} />
+            <span>
+              Editing the sales for <b>{dayName}</b>. Change the numbers (0 removes a product) and save. Stock moves by the difference.
+            </span>
+          </div>
+        )}
+        {locked && (
+          <div className="edit-note edit-note--saved">
+            <CheckCircle2 size={16} />
+            <span>
+              Sales for <b>{dayName}</b> are saved ({rm2(savedSales)}{Object.keys(savedDamage).length ? `, ${damagedUnits} damaged` : ''}). Press <b>Edit sale</b> to change them.
+            </span>
+          </div>
+        )}
+
         <div className="sales-tools">
           <label className="search">
             <Search size={18} />
@@ -190,18 +311,8 @@ export default function DailySalesModal({ onClose, initialDate = TODAY }) {
           </label>
           <label className="checkbox">
             <input type="checkbox" checked={onlySold} onChange={(e) => setOnlySold(e.target.checked)} />
-            Only show items with sales
+            Only show items with sales or damage
           </label>
-          <button
-            className="btn btn--outline btn--sm scan-btn"
-            onClick={() => photoInput.current?.click()}
-            disabled={!aiEnabled || scanning}
-            title={aiEnabled ? 'Take or upload a photo of a handwritten sales record' : 'Needs Gemini (GEMINI_API_KEY on the server)'}
-          >
-            {scanning ? <Loader2 size={16} className="spin" /> : <Camera size={16} />}
-            {scanning ? 'Reading photo…' : 'Scan paper record'}
-          </button>
-          <input ref={photoInput} type="file" accept="image/*,.heic,.heif" className="visually-hidden" onChange={onPhoto} tabIndex={-1} />
         </div>
 
         {scan && (
@@ -209,6 +320,7 @@ export default function DailySalesModal({ onClose, initialDate = TODAY }) {
             key={scan.photo}
             scan={scan}
             date={date}
+            savedSales={savedSales}
             onMoveDate={(d) => applyScan(scan.result, scan.photo, d)}
             onClose={() => setScan(null)}
           />
@@ -220,6 +332,7 @@ export default function DailySalesModal({ onClose, initialDate = TODAY }) {
               <tr>
                 <th>Product</th>
                 <th className="center">Units sold</th>
+                <th className="center">Damaged</th>
                 <th className="right">Price each</th>
                 <th className="right">Sales</th>
                 <th className="right">Stock after</th>
@@ -227,10 +340,10 @@ export default function DailySalesModal({ onClose, initialDate = TODAY }) {
             </thead>
             <tbody>
               {groups.length === 0 && (
-                <tr><td colSpan={5} className="empty">No products match.</td></tr>
+                <tr><td colSpan={6} className="empty">No products match.</td></tr>
               )}
               {groups.map((g) => (
-                <GroupRows key={g.category} group={g} draft={draft} available={available} setUnits={setUnits} marks={scan?.marks} />
+                <GroupRows key={g.category} group={g} draft={shown} damaged={shownDam} locked={locked} available={available} setUnits={setUnits} setDamaged={setDamaged} marks={scan?.marks} />
               ))}
             </tbody>
           </table>
@@ -240,11 +353,11 @@ export default function DailySalesModal({ onClose, initialDate = TODAY }) {
   );
 }
 
-function ScanNote({ scan, date, onMoveDate, onClose }) {
+function ScanNote({ scan, date, savedSales, onMoveDate, onClose }) {
   const { result, photo, marks } = scan;
   const filled = Object.keys(marks).length;
   const toCheck = Object.values(marks).filter((m) => m.confidence < SURE || m.units < m.wanted).length;
-  const otherDay = result.date && result.date !== date && result.date <= TODAY ? result.date : null;
+  const otherDay = result.date && result.date !== date && result.date <= localToday() ? result.date : null;
   // Desktop Chrome cannot show HEIC, so fall back to an icon.
   const [noPreview, setNoPreview] = useState(false);
   return (
@@ -262,6 +375,9 @@ function ScanNote({ scan, date, onMoveDate, onClose }) {
           {toCheck > 0 && <span className="text-amber">{toCheck} highlighted row{toCheck === 1 ? '' : 's'} need a check. </span>}
           Compare with the photo, fix anything wrong, then save. Nothing is saved yet.
         </span>
+        {savedSales > 0 && (
+          <span className="text-amber">This day already has {rm(savedSales)} saved. Saving replaces it with the numbers from the paper.</span>
+        )}
         {result.unmatched.length > 0 && (
           <span className="muted">Could not match: {result.unmatched.map((t) => `“${t}”`).join(', ')}. Add these by hand.</span>
         )}
@@ -271,24 +387,26 @@ function ScanNote({ scan, date, onMoveDate, onClose }) {
             <button className="link-btn" onClick={() => onMoveDate(otherDay)}>Record it on that day instead</button>
           </span>
         )}
-        {result.date > TODAY && <span className="text-amber">The paper is dated {result.date}, which is in the future. Check the date.</span>}
+        {result.date > localToday() && <span className="text-amber">The paper is dated {result.date}, which is in the future. Check the date.</span>}
       </div>
       <button className="icon-btn icon-btn--sm" onClick={onClose} aria-label="Hide scan result"><X size={16} /></button>
     </div>
   );
 }
 
-function GroupRows({ group, draft, available, setUnits, marks }) {
+function GroupRows({ group, draft, damaged, locked, available, setUnits, setDamaged, marks }) {
   return (
     <>
-      <tr className="group-row"><td colSpan={5}>{group.category}</td></tr>
+      <tr className="group-row"><td colSpan={6}>{group.category}</td></tr>
       {group.items.map((p) => {
         const units = draft[p.id] || 0;
+        const dmg = damaged[p.id] || 0;
         const avail = available(p);
+        const left = avail - units - dmg; // what neither box can take any more of
         const mark = marks?.[p.id];
         const check = mark && (mark.confidence < SURE || mark.units < mark.wanted);
         return (
-          <tr key={p.id} className={check ? 'row--check' : units > 0 ? 'row--active' : ''}>
+          <tr key={p.id} className={check ? 'row--check' : units > 0 || dmg > 0 ? 'row--active' : ''}>
             <td>
               <div className="cell-title">{p.name}</div>
               <div className="cell-sub mono">{p.sku} · {avail} available</div>
@@ -300,25 +418,35 @@ function GroupRows({ group, draft, available, setUnits, marks }) {
               )}
             </td>
             <td className="center">
-              <div className={`stepper${units > 0 ? ' stepper--active' : ''}${avail === 0 ? ' stepper--disabled' : ''}`}>
-                <button onClick={() => setUnits(p, units - 1)} disabled={units === 0} aria-label={`Fewer ${p.name}`}><Minus size={14} /></button>
-                <input
-                  inputMode="numeric"
-                  value={units}
-                  disabled={avail === 0}
-                  onChange={(e) => setUnits(p, e.target.value.replace(/\D/g, ''))}
-                  onFocus={(e) => e.target.select()}
-                  aria-label={`Units of ${p.name} sold`}
-                />
-                <button onClick={() => setUnits(p, units + 1)} disabled={units >= avail} aria-label={`More ${p.name}`}><Plus size={14} /></button>
-              </div>
+              <Stepper value={units} max={units + left} locked={locked} disabled={avail === 0} onChange={(v) => setUnits(p, v)} label={`Units of ${p.name} sold`} />
+            </td>
+            <td className="center">
+              <Stepper value={dmg} max={dmg + left} locked={locked} disabled={avail === 0} onChange={(v) => setDamaged(p, v)} label={`Units of ${p.name} damaged`} tone="damage" />
             </td>
             <td className="right muted">{rm2(p.price)}</td>
             <td className="right">{units > 0 ? <b>{rm2(units * p.price)}</b> : <span className="dash">—</span>}</td>
-            <td className={`right ${units > 0 ? 'strong' : 'muted'}`}>{avail - units}</td>
+            {/* A saved (locked) day's units are already out of stock. */}
+            <td className={`right ${units > 0 || dmg > 0 ? 'strong' : 'muted'}`}>{locked ? avail : left}</td>
           </tr>
         );
       })}
     </>
+  );
+}
+
+function Stepper({ value, max, locked, disabled, onChange, label, tone }) {
+  return (
+    <div className={`stepper${value > 0 ? ` stepper--active${tone ? ` stepper--${tone}` : ''}` : ''}${locked || disabled ? ' stepper--disabled' : ''}`}>
+      <button onClick={() => onChange(value - 1)} disabled={locked || value === 0} aria-label={`Fewer: ${label}`}><Minus size={14} /></button>
+      <input
+        inputMode="numeric"
+        value={value}
+        disabled={locked || disabled}
+        onChange={(e) => onChange(e.target.value.replace(/\D/g, ''))}
+        onFocus={(e) => e.target.select()}
+        aria-label={label}
+      />
+      <button onClick={() => onChange(value + 1)} disabled={locked || value >= max} aria-label={`More: ${label}`}><Plus size={14} /></button>
+    </div>
   );
 }

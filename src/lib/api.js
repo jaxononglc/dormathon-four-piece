@@ -24,8 +24,12 @@ export function syncAction(action, state) {
       return api('DELETE', `/products/${encodeURIComponent(action.id)}`);
     case 'addOption':
       return api('POST', '/options', { list: action.list, name: action.name });
-    case 'saveSales':
-      return api('PUT', `/sales/${action.date}`, { lines: action.lines });
+    case 'addSale':
+      return api('POST', '/sales', { sale: action.sale });
+    case 'editSale':
+      return api('PUT', `/sales/${encodeURIComponent(action.id)}`, { lines: action.lines });
+    case 'saveDamage':
+      return api('PUT', `/damage/${action.date}`, { lines: action.lines });
     case 'dismissRec':
       return api('POST', '/dismissed', { id: action.id });
     case 'startChat':

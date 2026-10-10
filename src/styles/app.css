@@ -263,6 +263,7 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 .modal__header { display: flex; align-items: flex-start; gap: 16px; padding: 24px 28px 20px; }
 .modal__icon { width: 48px; height: 48px; border-radius: 12px; background: var(--indigo-50); color: var(--indigo); display: grid; place-items: center; flex-shrink: 0; }
 .modal__titles { flex: 1; }
+.modal__actions { display: flex; align-items: center; gap: 8px; align-self: center; }
 .modal__titles h2 { font-size: 22px; }
 .modal__titles p { font-size: 14px; color: var(--muted); margin-top: 4px; }
 .modal__body { padding: 0 28px 24px; overflow-y: auto; }
@@ -297,8 +298,8 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 .day-chip__status { font-size: 12px; font-weight: 600; }
 .sales-tools { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; }
 .sales-tools .search input { padding: 12px 0; font-size: 15px; }
-.sales-tools { flex-wrap: wrap; }
-.scan-btn { margin-left: auto; }
+.edit-note { display: flex; align-items: center; gap: 10px; padding: 10px 14px; margin-bottom: 14px; background: var(--amber-50); border: 1px solid var(--amber-200); border-radius: 12px; font-size: 13px; color: var(--text); }
+.edit-note svg { color: var(--amber); flex: none; }
 .scan-note { display: flex; align-items: flex-start; gap: 14px; padding: 12px 14px; margin-bottom: 14px; background: var(--indigo-50); border: 1px solid var(--indigo-100); border-radius: 12px; font-size: 13px; color: var(--text); }
 .scan-note__photo { flex: none; }
 .scan-note__photo--none { width: 64px; height: 64px; display: grid; place-items: center; border-radius: 8px; border: 1px solid var(--indigo-200); background: #fff; color: var(--indigo-400); }
@@ -356,7 +357,12 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 .stepper button:hover:not(:disabled) { background: var(--bg); }
 .stepper button:disabled { color: #d4d4d8; }
 .stepper input, .stepper span { width: 64px; height: 40px; border: 0; border-left: 1px solid var(--border); border-right: 1px solid var(--border); text-align: center; font-size: 16px; font-weight: 500; color: var(--light); outline: none; display: grid; place-items: center; }
+.stepper input { display: block; caret-color: var(--indigo); }
+.stepper input:focus { color: var(--ink); font-weight: 700; }
+.stepper:focus-within { border-color: var(--indigo); box-shadow: 0 0 0 3px var(--indigo-100); }
 .stepper--active { border: 2px solid var(--indigo); }
+.stepper--damage { border-color: var(--red); }
+.stepper--damage input { color: var(--red) !important; }
 .stepper--active input { color: var(--ink); font-weight: 700; }
 .stepper--disabled { opacity: 0.6; }
 .stepper--disabled input { background: var(--bg); }
@@ -637,6 +643,7 @@ td.center .cell-sub { justify-content: center; }
   .modal { max-width: none !important; max-height: 92dvh; border-radius: 20px 20px 0 0; padding-bottom: env(safe-area-inset-bottom); }
   .modal__header { padding: 18px 18px 14px; }
   .modal__titles h2 { font-size: 18px; }
+  .modal__actions .hide-sm { display: none; }
   .modal__body { padding: 0 18px 18px; }
   .modal__footer { padding: 12px 18px; flex-wrap: wrap; }
   .modal__footer .btn { flex: 1; justify-content: center; }
@@ -659,3 +666,12 @@ td.center .cell-sub { justify-content: center; }
 .log-delta { font-family: 'Roboto Mono', monospace; font-size: 13px; font-weight: 500; padding: 2px 8px; border-radius: 999px; }
 .log-delta--up { background: var(--green-50); color: var(--green); }
 .log-delta--down { background: var(--red-50); color: var(--red); }
+
+/* Connecting / offline screen (App.jsx) */
+.connect { min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px; background: var(--bg); }
+.connect__card { width: 100%; max-width: 380px; background: #fff; border: 1px solid var(--card-border); border-radius: 20px; box-shadow: var(--shadow-card); padding: 32px 24px; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+.connect__mark { width: 56px; height: 56px; border-radius: 16px; background: var(--gradient); color: #fff; display: grid; place-items: center; margin-bottom: 4px; }
+.connect__mark--off { background: var(--red-50); color: var(--red); }
+.connect__card h2 { font-size: 20px; }
+.connect__detail { font-family: 'Roboto Mono', monospace; font-size: 12px; color: var(--muted); background: var(--bg); border-radius: 8px; padding: 6px 10px; overflow-wrap: anywhere; }
+.connect__card .btn { margin-top: 6px; }

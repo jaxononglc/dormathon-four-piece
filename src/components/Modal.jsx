@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import { X } from 'lucide-react';
 
-export default function Modal({ title, subtitle, icon, onClose, width = 600, children, footer, className = '' }) {
+// `actions` go in the header, left of the close button.
+export default function Modal({ title, subtitle, icon, actions, onClose, width = 600, children, footer, className = '' }) {
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose();
     document.addEventListener('keydown', onKey);
@@ -21,6 +22,7 @@ export default function Modal({ title, subtitle, icon, onClose, width = 600, chi
             <h2>{title}</h2>
             {subtitle && <p>{subtitle}</p>}
           </div>
+          {actions && <div className="modal__actions">{actions}</div>}
           <button className="icon-btn" onClick={onClose} aria-label="Close">
             <X size={20} />
           </button>

@@ -1,7 +1,7 @@
 // Demo rows from src/data/mockData.js as [sql, params] pairs for the schema in
 // db/schema.sql. ON CONFLICT DO NOTHING, so running them again never overwrites
 // edits. Used by db/setup.mjs and POST /api/reset.
-import { SHOP, CATEGORIES, SUPPLIERS, PRODUCTS, SALES_RECORDS, STOCK_LOG } from '../src/data/mockData.js';
+import { SHOP, CATEGORIES, SUPPLIERS, PRODUCTS, SALES_RECORDS, STOCK_LOG } from '../db/demo-data.js';
 
 export const SHOP_ID = 1;
 
@@ -42,22 +42,17 @@ export function demoQueries() {
       [SHOP_ID, Number(p.id), p.stock, p.min, p.location, p.expiry || null],
     ]);
   }
+  // One recorded sale per day (demoQueries only runs on an empty database).
   for (const [date, lines] of Object.entries(SALES_RECORDS)) {
     q.push([
-      `INSERT INTO Sales (Shop_ID, Sales_Date, Sales_Source) VALUES ($1, $2, 'daily_entry')
-       ON CONFLICT (Shop_ID, Sales_Date) WHERE Sales_Source = 'daily_entry' DO NOTHING`,
-      [SHOP_ID, date],
+      `WITH s AS (
+         INSERT INTO Sales (Shop_ID, Sales_Date, Sales_Source, Sales_CreatedAt)
+         VALUES ($1, $2::date, 'daily_entry', $2::date + time '12:00' AT TIME ZONE 'Asia/Kuala_Lumpur') RETURNING Sales_ID)
+       INSERT INTO SalesItem (Sales_ID, Item_ID, SalesItem_Quantity, SalesItem_UnitPrice)
+       SELECT s.Sales_ID, i.Item_ID, n.value::int, COALESCE(i.Item_UnitPrice, 0)
+       FROM s, jsonb_each_text($3::jsonb) n JOIN Item i ON i.Item_ID = n.key::bigint AND i.Shop_ID = $1`,
+      [SHOP_ID, date, JSON.stringify(lines)],
     ]);
-    for (const [id, units] of Object.entries(lines)) {
-      q.push([
-        `INSERT INTO SalesItem (Sales_ID, Item_ID, SalesItem_Quantity, SalesItem_UnitPrice)
-         SELECT s.Sales_ID, i.Item_ID, $3::int, COALESCE(i.Item_UnitPrice, 0)
-         FROM Sales s, Item i
-         WHERE s.Shop_ID = $1 AND s.Sales_Date = $2 AND s.Sales_Source = 'daily_entry' AND i.Item_ID = $4
-         ON CONFLICT DO NOTHING`,
-        [SHOP_ID, date, units, Number(id)],
-      ]);
-    }
   }
   q.push([updateTotals, [SHOP_ID]]);
   for (const l of STOCK_LOG) {

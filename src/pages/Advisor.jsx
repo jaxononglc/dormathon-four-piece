@@ -8,11 +8,9 @@ import { useStore } from '../store/AppStore';
 import { useToast } from '../store/Toast';
 import { getAiReply, chatMessage } from '../lib/aiReply';
 import { buildAdvice } from '../lib/advice';
-import { SHOP } from '../data/mockData';
 import { dayLabel } from '../lib/format';
 import DashboardThread from '../components/DashboardThread';
 
-const GREETING = { id: 'greeting', role: 'ai', text: `Hi ${SHOP.owner}! Ask me anything about your stock, sales or plans.` };
 const STARTERS = ['What is low on stock?', 'Which items have the lowest margin?', 'Should I stock up for Deepavali?', 'Why are sales up this week?'];
 
 const titleFrom = (text) => (text.length > 48 ? `${text.slice(0, 45).trim()}…` : text);
@@ -51,7 +49,8 @@ export default function Advisor() {
   const storeRef = useRef(store);
   storeRef.current = store;
 
-  const { dashboardChat, dashboardDate, adviceChat } = store;
+  const { dashboardChat, dashboardDate, adviceChat, shop } = store;
+  const GREETING = { id: 'greeting', role: 'ai', text: `Hi ${shop.owner}! Ask me anything about your stock, sales or plans.` };
   // Two pinned chats sit above the history:
   // - Dashboard (top): today's Dashboard panel conversation, continued here; messages sent
   //   while it is open go back to the Dashboard. Past days move into the history
@@ -138,7 +137,7 @@ export default function Advisor() {
             <div className="ai-avatar ai-avatar--lg"><Sparkles size={20} /></div>
             <div>
               <div className="strong big">{chat ? chat.title : 'Bijak Advisor'}</div>
-              <div className="online"><i />{store.aiEnabled ? 'Gemini' : 'Offline demo'} · using {SHOP.name}’s sales &amp; stock data</div>
+              <div className="online"><i />{store.aiEnabled ? 'Gemini' : 'Offline demo'} · using {shop.name}’s sales &amp; stock data</div>
             </div>
           </div>
           <div className="row gap-8">
@@ -153,7 +152,7 @@ export default function Advisor() {
               <>
                 <div className="msg msg--ai msg--wide">
                   <div className="ai-avatar ai-avatar--md"><Sparkles size={16} /></div>
-                  <div className="ai-answer"><p>Good morning, {SHOP.owner}! I checked last night’s sales and your stock. Here’s what I’d do today:</p></div>
+                  <div className="ai-answer"><p>Good morning, {shop.owner}! I checked last night’s sales and your stock. Here’s what I’d do today:</p></div>
                 </div>
                 <div className="advice-list">
                   {(advice.length ? advice : [null]).map((a) => (

@@ -40,7 +40,10 @@ const supplierId = '(SELECT Supplier_ID FROM Supplier WHERE Shop_ID = $2 AND Sup
 
 async function getState(today) {
   const sql = db();
-  const [products, categories, suppliers, sales, chats, messages, dismissed, logs] = await sql.transaction([
+  const [shop, products, categories, suppliers, sales, chats, messages, dismissed, logs, damaged] = await sql.transaction([
+    sql.query(`SELECT Shop_Name AS name, Shop_Type AS type,
+                 (SELECT User_Name FROM Users u WHERE u.Shop_ID = s.Shop_ID AND User_Role = 'owner' ORDER BY User_ID LIMIT 1) AS owner
+               FROM Shop s WHERE Shop_ID = $1`, [SHOP_ID]),
     sql.query(`
       SELECT i.Item_ID AS id, i.Item_Name AS name, i.Item_SKU AS sku, c.Category_Name AS category,
              s.Supplier_Name AS supplier, inv.Inventory_Location AS location, inv.Inventory_Stock AS stock,
@@ -54,11 +57,12 @@ async function getState(today) {
       ORDER BY i.Item_CreatedAt, i.Item_ID`, [SHOP_ID]),
     sql.query('SELECT Category_Name AS name FROM Category WHERE Shop_ID = $1 ORDER BY Category_CreatedAt DESC, Category_ID DESC', [SHOP_ID]),
     sql.query('SELECT Supplier_Name AS name FROM Supplier WHERE Shop_ID = $1 ORDER BY Supplier_CreatedAt DESC, Supplier_ID DESC', [SHOP_ID]),
-    // Units per item per day, all sources (daily entries and any POS sales).
+    // Every sale (daily entries and any POS sales) with its units per item.
     sql.query(`
-      SELECT s.Sales_Date::text AS date, si.Item_ID AS item_id, sum(si.SalesItem_Quantity)::int AS units
+      SELECT s.Sales_ID AS id, s.Sales_Date::text AS date, ${ms('s.Sales_CreatedAt')} AS at,
+             jsonb_object_agg(si.Item_ID::text, si.SalesItem_Quantity) AS lines
       FROM Sales s JOIN SalesItem si ON si.Sales_ID = s.Sales_ID
-      WHERE s.Shop_ID = $1 GROUP BY 1, 2`, [SHOP_ID]),
+      WHERE s.Shop_ID = $1 GROUP BY s.Sales_ID ORDER BY s.Sales_CreatedAt, s.Sales_ID`, [SHOP_ID]),
     sql.query(`SELECT Chat_ID AS id, Chat_Kind AS kind, Chat_Day::text AS day, Chat_Title AS title,
                  ${ms('Chat_CreatedAt')} AS created_at, ${ms('Chat_UpdatedAt')} AS updated_at
                FROM Chat WHERE Shop_ID = $1`, [SHOP_ID]),
@@ -69,16 +73,20 @@ async function getState(today) {
     sql.query(`SELECT StockLog_ID AS id, Item_ID AS item_id, StockLog_Kind AS kind, StockLog_Delta AS delta,
                  StockLog_StockAfter AS stock_after, StockLog_Note AS note, ${ms('StockLog_CreatedAt')} AS at
                FROM StockLog WHERE Shop_ID = $1 ORDER BY StockLog_CreatedAt, StockLog_ID`, [SHOP_ID]),
+    sql.query(`SELECT "DamageLog_Date"::text AS date, item_id, sum("DamageLog_Quantity")::int AS units
+               FROM "DamageLog" WHERE shop_id = $1 GROUP BY 1, 2`, [SHOP_ID]),
   ], { readOnly: true });
 
-  const salesMap = {};
-  for (const r of sales) (salesMap[r.date] ||= {})[String(r.item_id)] = r.units;
+  const damage = {};
+  for (const r of damaged) (damage[r.date] ||= {})[String(r.item_id)] = r.units;
 
   const byChat = {};
   for (const m of messages) (byChat[m.chat_id] ||= []).push({ id: m.id, role: m.role, text: m.text, at: m.at });
 
   const todayId = `dashboard-${today}`;
+  if (!shop[0]) throw new HttpError(503, `Shop ${SHOP_ID} is missing — run npm run db:setup`);
   return {
+    shop: { name: shop[0].name, type: shop[0].type ?? '', owner: shop[0].owner ?? '' },
     products: products.map((r) => ({
       id: String(r.id), name: r.name, sku: r.sku, category: r.category ?? '', supplier: r.supplier ?? '',
       location: r.location, stock: Number(r.stock), min: Number(r.min), unit: r.unit,
@@ -86,7 +94,7 @@ async function getState(today) {
     })),
     categories: categories.map((r) => r.name),
     suppliers: suppliers.map((r) => r.name),
-    sales: salesMap,
+    salesRecords: sales.map((r) => ({ id: String(r.id), date: r.date, at: r.at, lines: r.lines })),
     // Normal chats plus past days' Dashboard chats (empty ones are skipped).
     chats: chats
       .filter((c) => c.kind === 'chat' || (c.kind === 'dashboard' && c.id !== todayId && byChat[c.id]))
@@ -95,6 +103,7 @@ async function getState(today) {
     dashboardDate: today,
     adviceChat: byChat.advice || [],
     dismissedRecs: dismissed.map((r) => r.id),
+    damage,
     stockLog: logs.map((l) => ({ id: l.id, productId: String(l.item_id), at: l.at, kind: l.kind, delta: Number(l.delta), stockAfter: num(l.stock_after), note: l.note })),
     aiEnabled: Boolean(process.env.GEMINI_API_KEY),
   };
@@ -164,48 +173,105 @@ async function updateProduct(id, patch = {}) {
   if (q.length) await sql.transaction(q);
 }
 
-async function saveSales(date, lines) {
+// Only real item ids; quantities must be whole and positive.
+const cleanLines = (lines) => JSON.stringify(Object.fromEntries(
+  Object.entries(lines || {}).filter(([, u]) => Number(u) > 0).map(([id, u]) => [String(itemId(id)), Math.floor(Number(u))])
+));
+const saleId = (id) => {
+  const n = Number(id);
+  if (!Number.isSafeInteger(n) || n <= 0) throw new HttpError(400, `Bad sale id: ${id}`);
+  return n;
+};
+
+// Create (or, with the same id, re-save) a day's sale and take its units out of stock.
+// The id comes from the app (lib/api.js) so it can edit the sale before this call returns.
+// One per day (sales_one_daily_entry): a day that already has one must be edited instead.
+async function addSale({ id, date, at, lines }) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) throw new HttpError(400, 'Bad date');
+  const n = saleId(id);
   const sql = db();
-  // Only real item ids; quantities must be whole and positive.
-  const clean = Object.fromEntries(
-    Object.entries(lines || {}).filter(([, u]) => Number(u) > 0).map(([id, u]) => [String(itemId(id)), Math.floor(Number(u))])
-  );
-  const json = JSON.stringify(clean);
-  // The day's daily_entry sale: move stock by the difference from what was saved
-  // before (so editing a day never double-counts), then replace its lines.
+  const [exists] = await sql.query('SELECT 1 FROM Sales WHERE Sales_ID = $1', [n]);
+  if (exists) return editSale(n, lines);
+  const [taken] = await sql.query(
+    "SELECT 1 FROM Sales WHERE Shop_ID = $1 AND Sales_Date = $2 AND Sales_Source = 'daily_entry'", [SHOP_ID, date]);
+  if (taken) throw new HttpError(409, `Sales for ${date} are already saved. Reload and use Edit to change them.`);
+  const json = cleanLines(lines);
   await sql.transaction([
     sql.query(
-      `INSERT INTO Sales (Shop_ID, Sales_Date, Sales_Source) VALUES ($1, $2, 'daily_entry')
-       ON CONFLICT (Shop_ID, Sales_Date) WHERE Sales_Source = 'daily_entry' DO NOTHING`,
-      [SHOP_ID, date]
+      `INSERT INTO Sales (Sales_ID, Shop_ID, Sales_Date, Sales_Source, Sales_CreatedAt)
+       VALUES ($1, $2, $3, 'daily_entry', to_timestamp($4 / 1000.0))`,
+      [n, SHOP_ID, date, at || Date.now()]
     ),
     sql.query(
-      `WITH sale AS (SELECT Sales_ID FROM Sales WHERE Shop_ID = $1 AND Sales_Date = $2 AND Sales_Source = 'daily_entry'),
-            new AS (SELECT key::bigint AS item_id, value::int AS units FROM jsonb_each_text($3::jsonb)),
-            old AS (SELECT Item_ID AS item_id, SalesItem_Quantity AS units FROM SalesItem WHERE Sales_ID = (SELECT Sales_ID FROM sale)),
+      `INSERT INTO SalesItem (Sales_ID, Item_ID, SalesItem_Quantity, SalesItem_UnitPrice)
+       SELECT $1, i.Item_ID, n.value::int, COALESCE(i.Item_UnitPrice, 0)
+       FROM jsonb_each_text($3::jsonb) n JOIN Item i ON i.Item_ID = n.key::bigint AND i.Shop_ID = $2`,
+      [n, SHOP_ID, json]
+    ),
+    sql.query(
+      `UPDATE Inventory inv SET Inventory_Stock = GREATEST(0, inv.Inventory_Stock - n.value::int), Inventory_UpdatedAt = now()
+       FROM jsonb_each_text($2::jsonb) n WHERE inv.Shop_ID = $1 AND inv.Item_ID = n.key::bigint`,
+      [SHOP_ID, json]
+    ),
+    sql.query(updateTotals, [SHOP_ID]),
+  ]);
+}
+
+// Replace a day's damaged goods ("DamageLog", one row per item). Damaged units leave
+// stock, so stock moves by the difference from what the day had before.
+async function saveDamage(date, lines) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) throw new HttpError(400, 'Bad date');
+  const json = cleanLines(lines);
+  const sql = db();
+  await sql.transaction([
+    sql.query(
+      `WITH new AS (SELECT key::bigint AS item_id, value::int AS units FROM jsonb_each_text($3::jsonb)),
+            old AS (SELECT item_id::bigint, sum("DamageLog_Quantity")::int AS units FROM "DamageLog"
+                    WHERE shop_id = $1 AND "DamageLog_Date" = $2::date GROUP BY 1),
             d AS (SELECT item_id, COALESCE(new.units, 0) - COALESCE(old.units, 0) AS delta FROM new FULL JOIN old USING (item_id))
        UPDATE Inventory inv SET Inventory_Stock = GREATEST(0, inv.Inventory_Stock - d.delta), Inventory_UpdatedAt = now()
        FROM d WHERE inv.Shop_ID = $1 AND inv.Item_ID = d.item_id AND d.delta <> 0`,
       [SHOP_ID, date, json]
     ),
+    sql.query('DELETE FROM "DamageLog" WHERE shop_id = $1 AND "DamageLog_Date" = $2::date', [SHOP_ID, date]),
     sql.query(
-      `DELETE FROM SalesItem WHERE Sales_ID = (SELECT Sales_ID FROM Sales WHERE Shop_ID = $1 AND Sales_Date = $2 AND Sales_Source = 'daily_entry')`,
-      [SHOP_ID, date]
+      `INSERT INTO "DamageLog" (shop_id, item_id, "DamageLog_Quantity", "DamageLog_Reason", "DamageLog_Date")
+       SELECT $1, i.Item_ID, n.value::int, 'Daily sales record', $2::date
+       FROM jsonb_each_text($3::jsonb) n JOIN Item i ON i.Item_ID = n.key::bigint AND i.Shop_ID = $1`,
+      [SHOP_ID, date, json]
     ),
+  ]);
+}
+
+// Change a recorded sale: stock moves by the difference, so units taken off go back
+// into stock. No lines left → the sale is deleted.
+async function editSale(id, lines) {
+  const n = saleId(id);
+  const json = cleanLines(lines);
+  const sql = db();
+  await sql.transaction([
+    sql.query(
+      `WITH new AS (SELECT key::bigint AS item_id, value::int AS units FROM jsonb_each_text($3::jsonb)),
+            old AS (SELECT si.Item_ID AS item_id, si.SalesItem_Quantity AS units FROM SalesItem si
+                    JOIN Sales s ON s.Sales_ID = si.Sales_ID WHERE s.Sales_ID = $2 AND s.Shop_ID = $1),
+            d AS (SELECT item_id, COALESCE(new.units, 0) - COALESCE(old.units, 0) AS delta FROM new FULL JOIN old USING (item_id))
+       UPDATE Inventory inv SET Inventory_Stock = GREATEST(0, inv.Inventory_Stock - d.delta), Inventory_UpdatedAt = now()
+       FROM d WHERE inv.Shop_ID = $1 AND inv.Item_ID = d.item_id AND d.delta <> 0`,
+      [SHOP_ID, n, json]
+    ),
+    sql.query('DELETE FROM SalesItem WHERE Sales_ID = (SELECT Sales_ID FROM Sales WHERE Sales_ID = $1 AND Shop_ID = $2)', [n, SHOP_ID]),
     sql.query(
       `INSERT INTO SalesItem (Sales_ID, Item_ID, SalesItem_Quantity, SalesItem_UnitPrice)
        SELECT s.Sales_ID, i.Item_ID, n.value::int, COALESCE(i.Item_UnitPrice, 0)
-       FROM jsonb_each_text($3::jsonb) n
-       JOIN Item i ON i.Item_ID = n.key::bigint AND i.Shop_ID = $1
-       JOIN Sales s ON s.Shop_ID = $1 AND s.Sales_Date = $2 AND s.Sales_Source = 'daily_entry'`,
-      [SHOP_ID, date, json]
+       FROM Sales s, jsonb_each_text($3::jsonb) n JOIN Item i ON i.Item_ID = n.key::bigint AND i.Shop_ID = $2
+       WHERE s.Sales_ID = $1 AND s.Shop_ID = $2`,
+      [n, SHOP_ID, json]
     ),
     sql.query(updateTotals, [SHOP_ID]),
-    // A day with nothing left on it disappears, like in the app.
     sql.query(
-      `DELETE FROM Sales s WHERE s.Shop_ID = $1 AND s.Sales_Date = $2 AND s.Sales_Source = 'daily_entry'
+      `DELETE FROM Sales s WHERE s.Sales_ID = $1 AND s.Shop_ID = $2
        AND NOT EXISTS (SELECT 1 FROM SalesItem si WHERE si.Sales_ID = s.Sales_ID)`,
-      [SHOP_ID, date]
+      [n, SHOP_ID]
     ),
   ]);
 }
@@ -341,7 +407,9 @@ const routes = [
     return ok;
   }],
 
-  ['PUT', /^\/sales\/(\d{4}-\d{2}-\d{2})$/, async ([date], _, { lines }) => { await saveSales(date, lines); return ok; }],
+  ['POST', /^\/sales$/, async (_, __, { sale }) => { await addSale(sale || {}); return ok; }],
+  ['PUT', /^\/sales\/(\d+)$/, async ([id], _, { lines }) => { await editSale(id, lines); return ok; }],
+  ['PUT', /^\/damage\/(\d{4}-\d{2}-\d{2})$/, async ([date], _, { lines }) => { await saveDamage(date, lines); return ok; }],
 
   // Upsert, so re-sending an entry never duplicates it.
   ['POST', /^\/stock-logs$/, async (_, __, { logs }) => {
@@ -407,7 +475,7 @@ const routes = [
   ['POST', /^\/reset$/, async () => {
     const sql = db();
     await sql.transaction([
-      sql.query('TRUNCATE StockLog, Restocklog, Message, Chat, DismissedAdvice, SalesItem, Sales, Inventory, Item, Category, Supplier, Users, Shop RESTART IDENTITY'),
+      sql.query('TRUNCATE "DamageLog", StockLog, Restocklog, Message, Chat, DismissedAdvice, SalesItem, Sales, Inventory, Item, Category, Supplier, Users, Shop RESTART IDENTITY'),
       ...[...baseQueries(), ...demoQueries()].map(([text, params]) => sql.query(text, params)),
     ]);
     return ok;

@@ -5,13 +5,14 @@ import KpiCard from '../components/KpiCard';
 import { LineChart, Sparkline } from '../components/Charts';
 import { useStore } from '../store/AppStore';
 import { useToast } from '../store/Toast';
-import { ANALYSIS, TOP_PRODUCTS, MARGIN_TARGET, SLOW_MOVERS, SHOP } from '../data/mockData';
+import { ANALYSIS, TOP_PRODUCTS, SLOW_MOVERS } from '../data/mockData';
+import { MARGIN_TARGET } from '../data/config';
 import { downloadCSV, pct, rm, rm2, signedPct } from '../lib/format';
 
 const SORTS = { revenue: 'Revenue', units: 'Units', margin: 'Margin' };
 
 export default function SalesAnalysis() {
-  const { productsById } = useStore();
+  const { productsById, shop } = useStore();
   const toast = useToast();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -50,7 +51,7 @@ export default function SalesAnalysis() {
 
   function exportReport() {
     downloadCSV(`sales-report-${period}.csv`, [
-      [`${SHOP.name} — Sales report`, a.range],
+      [`${shop.name} — Sales report`, a.range],
       [],
       ['Revenue (RM)', a.revenue], ['Orders', a.orders], ['Avg. order value (RM)', aov.toFixed(2)], ['Gross profit (RM)', profit.toFixed(0)], ['Margin', pct(a.margin)],
       [],
@@ -71,7 +72,7 @@ export default function SalesAnalysis() {
       <header className="topbar">
         <div>
           <h1>Sales analysis</h1>
-          <p className="muted">{SHOP.name} · {a.range} · {a.compare}</p>
+          <p className="muted">{shop.name} · {a.range} · {a.compare}</p>
         </div>
         <div className="topbar__actions">
           <div className="segmented segmented--dark">

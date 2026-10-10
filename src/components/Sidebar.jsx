@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { LayoutGrid, Package, LineChart, Sparkles, Settings } from 'lucide-react';
 import { useStore } from '../store/AppStore';
-import { SHOP } from '../data/mockData';
+import { initials } from '../lib/format';
 
 // `short` is the label in the mobile bottom bar.
 export const NAV = [
@@ -12,7 +12,7 @@ export const NAV = [
 ];
 
 export default function Sidebar() {
-  const { advisorUnread, products } = useStore();
+  const { advisorUnread, products, shop } = useStore();
   const navClass = ({ isActive }) => `nav-item${isActive ? ' nav-item--active' : ''}`;
 
   return (
@@ -37,10 +37,10 @@ export default function Sidebar() {
         <span>Settings</span>
       </NavLink>
       <div className="shop-card">
-        <div className="shop-card__avatar">{SHOP.initials}</div>
+        <div className="shop-card__avatar">{initials(shop.name)}</div>
         <div>
-          <div className="shop-card__name">{SHOP.name}</div>
-          <div className="shop-card__meta">{SHOP.type} · {products.length} products</div>
+          <div className="shop-card__name">{shop.name}</div>
+          <div className="shop-card__meta">{shop.type} · {products.length} products</div>
         </div>
       </div>
     </aside>

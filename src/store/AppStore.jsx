@@ -1,31 +1,34 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from 'react';
-import { CATEGORIES, PRODUCTS, SALES_RECORDS, STOCK_LOG, SUPPLIERS } from '../data/mockData';
 import { dayLabel, localToday } from '../lib/format';
 import { api, syncAction } from '../lib/api';
 import { withStockLog, changedLogs } from '../lib/stockLog';
 
-// v2: product ids changed from 'p1' to '1' (database Item_IDs).
-const STORAGE_KEY = 'bijak-demo-v2';
+// Only UI preferences are kept in this browser; all data lives in the database.
+const STORAGE_KEY = 'bijak-ui-v1';
+const SAVED_UI = ['activeChatId', 'advisorUnread'];
 
-// Data comes from the database through /api (server/api.js) when it is reachable.
-// Every action updates this store first, then is saved to the API in order
-// (see syncAction). If the API is down, the app falls back to the mock data and
-// keeps changes in this browser (localStorage) only.
+// All data comes from the database through /api (server/api.js). Every action
+// updates this store first, then is saved to the API in order (see syncAction).
+// Until the first load succeeds the app shows a connecting / offline screen (App.jsx).
 const initialState = () => ({
-  backend: 'connecting', // 'connecting' | 'online' | 'offline' (not persisted)
-  aiEnabled: false, // server has a Gemini key (not persisted)
-  syncError: null, // last failed save, shown in Settings (not persisted)
-  products: PRODUCTS,
+  backend: 'connecting', // 'connecting' | 'online' | 'offline'
+  backendError: null, // why the last load failed
+  aiEnabled: false, // server has a Gemini key
+  syncError: null, // last failed save, shown in Settings
+  shop: { name: '', type: '', owner: '' }, // Shop table + its owner in Users
+  products: [],
   // User-created categories / suppliers go to the front so they show up first
   // in the (max 5) suggestions.
-  categories: CATEGORIES,
-  suppliers: SUPPLIERS,
-  sales: SALES_RECORDS,
+  categories: [],
+  suppliers: [],
+  // Every recorded sale (Sales + SalesItem). `sales` (units per product per day) is derived from it.
+  salesRecords: [], // [{ id, date: 'yyyy-mm-dd', at, lines: { productId: units } }]
+  damage: {}, // damaged goods ("DamageLog"): { 'yyyy-mm-dd': { productId: units } }
   advisorUnread: 3,
-  // AI Advisor conversations (`chats` + `messages` tables).
+  // AI Advisor conversations (Chat + Message tables).
   chats: [], // [{ id, kind, day?, title, createdAt, updatedAt, messages: [{ id, role, text, at }] }]
   activeChatId: null, // null = the default "new chat" screen
-  typingChatId: null, // chat waiting for an AI reply, or 'dashboard' (not persisted)
+  typingChatId: null, // chat waiting for an AI reply, or 'dashboard'
   // The Dashboard panel keeps one conversation per day. When the day changes,
   // 'rollDashboard' moves it into `chats` (kind: 'dashboard') and starts a new one.
   dashboardChat: [], // [{ id, role, text, at }]
@@ -34,20 +37,16 @@ const initialState = () => ({
   adviceChat: [], // [{ id, role, text, at }]
   dismissedRecs: [], // ids from lib/advice.js the user said "Not now" to
   // Per-product change history (Inventory → Log), see lib/stockLog.js.
-  stockLog: STOCK_LOG, // [{ id, productId, at, kind, delta, stockAfter, note }]
+  stockLog: [], // [{ id, productId, at, kind, delta, stockAfter, note }]
 });
 
 function load() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const { backend, aiEnabled, syncError, ...saved } = JSON.parse(raw); // eslint-disable-line no-unused-vars
-      return { ...initialState(), ...saved, typingChatId: null };
-    }
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    return { ...initialState(), ...Object.fromEntries(SAVED_UI.filter((k) => k in saved).map((k) => [k, saved[k]])) };
   } catch {
-    // ignore broken storage
+    return initialState(); // broken or blocked storage
   }
-  return initialState();
 }
 
 function reducer(state, action) {
@@ -68,27 +67,47 @@ function baseReducer(state, action) {
       const name = action.name.trim();
       const list = state[action.list];
       if (!name || list.some((c) => c.toLowerCase() === name.toLowerCase())) return state;
-      // TODO(backend): POST /categories or /suppliers { name } and use the saved row instead.
       return { ...state, [action.list]: [name, ...list] };
     }
     case 'deleteProduct':
       return { ...state, products: state.products.filter((p) => p.id !== action.id) };
-    case 'saveSales': {
-      // Replace the day's record and move stock by the difference, so editing
-      // an already-saved day never double-counts.
-      const before = state.sales[action.date] || {};
-      const after = Object.fromEntries(Object.entries(action.lines).filter(([, u]) => u > 0));
-      const ids = new Set([...Object.keys(before), ...Object.keys(after)]);
-      const delta = {};
-      ids.forEach((id) => {
-        delta[id] = (after[id] || 0) - (before[id] || 0);
-      });
-      const sales = { ...state.sales };
-      if (Object.keys(after).length) sales[action.date] = after;
-      else delete sales[action.date];
+    case 'saveDamage': {
+      // Replace the day's damaged goods; they leave stock, so stock moves by the difference.
+      const before = state.damage[action.date] || {};
+      const after = positive(action.lines);
+      const damage = { ...state.damage };
+      if (Object.keys(after).length) damage[action.date] = after;
+      else delete damage[action.date];
       return {
         ...state,
-        sales,
+        damage,
+        products: state.products.map((p) => {
+          const delta = (after[p.id] || 0) - (before[p.id] || 0);
+          return delta ? { ...p, stock: Math.max(0, p.stock - delta) } : p;
+        }),
+      };
+    }
+    case 'addSale':
+    case 'editSale': {
+      // A new sale takes its units out of stock; an edit moves stock by the
+      // difference (units taken off go back). An edit with no units left deletes the sale.
+      const old = action.type === 'editSale' ? state.salesRecords.find((r) => r.id === action.id) : null;
+      if (action.type === 'editSale' && !old) return state;
+      // One sale per day: the modal edits the day's sale instead of adding a second.
+      if (action.type === 'addSale' && state.salesRecords.some((r) => r.date === action.sale.date)) return state;
+      const before = old?.lines || {};
+      const after = positive(action.type === 'addSale' ? action.sale.lines : action.lines);
+      const delta = {};
+      new Set([...Object.keys(before), ...Object.keys(after)]).forEach((id) => {
+        delta[id] = (after[id] || 0) - (before[id] || 0);
+      });
+      let salesRecords;
+      if (!old) salesRecords = Object.keys(after).length ? [...state.salesRecords, { ...action.sale, lines: after }] : state.salesRecords;
+      else if (Object.keys(after).length) salesRecords = state.salesRecords.map((r) => (r.id === old.id ? { ...r, lines: after } : r));
+      else salesRecords = state.salesRecords.filter((r) => r.id !== old.id);
+      return {
+        ...state,
+        salesRecords,
         products: state.products.map((p) =>
           delta[p.id] ? { ...p, stock: Math.max(0, p.stock - delta[p.id]) } : p
         ),
@@ -145,13 +164,16 @@ function baseReducer(state, action) {
     case 'readAdvisor':
       return state.advisorUnread ? { ...state, advisorUnread: 0 } : state;
     case 'reset':
-      return { ...initialState(), backend: state.backend, aiEnabled: state.aiEnabled };
+      // The API reloads the demo data right after (see dispatch); keep the connection info.
+      return { ...initialState(), backend: state.backend, aiEnabled: state.aiEnabled, shop: state.shop };
     // ---- API ----
     case 'hydrate':
       // Saved data from the database replaces the local copy; UI state (open chat…) stays.
-      return { ...state, ...action.data, backend: 'online', syncError: null };
+      return { ...state, ...action.data, backend: 'online', backendError: null, syncError: null };
+    case 'backendConnecting':
+      return { ...state, backend: 'connecting', backendError: null };
     case 'backendOffline':
-      return { ...state, backend: 'offline' };
+      return { ...state, backend: 'offline', backendError: action.message };
     case 'syncError':
       return { ...state, syncError: action.message };
     default:
@@ -168,6 +190,22 @@ export function stockStatus(p) {
 
 // Restock up to twice the minimum so the item is not flagged again right away.
 export const suggestedQty = (p) => Math.max(1, p.min * 2 - p.stock);
+
+const positive = (lines) => Object.fromEntries(Object.entries(lines || {}).filter(([, u]) => u > 0));
+
+// Sale ids are made here so a new sale can be edited before the API call returns.
+// Numeric (Sales_ID is bigint) and far above the database's own ids.
+export const newSaleId = () => String(Date.now() * 1000 + Math.floor(Math.random() * 1000));
+
+// { 'yyyy-mm-dd': { productId: units } } from all recorded sales.
+function salesByDay(records) {
+  const days = {};
+  for (const r of records) {
+    const day = (days[r.date] ||= {});
+    for (const [id, u] of Object.entries(r.lines)) day[id] = (day[id] || 0) + u;
+  }
+  return days;
+}
 
 export function dayTotals(lines, productsById) {
   let units = 0;
@@ -191,13 +229,14 @@ export function StoreProvider({ children }) {
   stateRef.current = state;
   const queue = useRef(Promise.resolve());
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async ({ quiet = false } = {}) => {
+    if (!quiet) rawDispatch({ type: 'backendConnecting' });
     try {
       const data = await api('GET', `/state?today=${localToday()}`);
       rawDispatch({ type: 'hydrate', data });
     } catch (err) {
-      console.warn('API unavailable, using data saved in this browser:', err.message);
-      rawDispatch({ type: 'backendOffline' });
+      console.warn('Could not load data from the API:', err.message);
+      rawDispatch({ type: 'backendOffline', message: err.message });
     }
   }, []);
 
@@ -213,7 +252,7 @@ export function StoreProvider({ children }) {
     queue.current = queue.current
       .then(() => syncAction(action, before))
       .then(() => logs.length && api('POST', '/stock-logs', { logs }))
-      .then(() => action.type === 'reset' && refresh())
+      .then(() => action.type === 'reset' && refresh({ quiet: true }))
       .catch((err) => {
         console.error(`Saving "${action.type}" failed:`, err);
         rawDispatch({ type: 'syncError', message: `${action.type}: ${err.message}` });
@@ -232,28 +271,30 @@ export function StoreProvider({ children }) {
 
   useEffect(() => {
     try {
-      const { typingChatId, backend, aiEnabled, syncError, ...saved } = state; // eslint-disable-line no-unused-vars
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.fromEntries(SAVED_UI.map((k) => [k, state[k]]))));
     } catch {
-      // storage full or blocked — the demo still works in memory
+      // storage blocked — preferences just aren't remembered
     }
-  }, [state]);
+  }, [state.activeChatId, state.advisorUnread]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const value = useMemo(() => {
     const productsById = Object.fromEntries(state.products.map((p) => [p.id, p]));
     const reorder = state.products.filter((p) => stockStatus(p) !== 'ok');
+    const sales = salesByDay(state.salesRecords);
     return {
       ...state,
+      sales,
       productsById,
       reorder,
       lowCount: reorder.filter((p) => stockStatus(p) === 'low').length,
       outCount: reorder.filter((p) => stockStatus(p) === 'out').length,
       stockValue: state.products.reduce((s, p) => s + p.stock * p.cost, 0),
       retailValue: state.products.reduce((s, p) => s + p.stock * (p.price ?? p.cost), 0),
-      salesFor: (date) => dayTotals(state.sales[date], productsById),
+      salesFor: (date) => dayTotals(sales[date], productsById),
       dispatch,
+      refresh: () => refresh(), // reload everything from the API (Retry button)
     };
-  }, [state]);
+  }, [state, dispatch, refresh]);
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }

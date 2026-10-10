@@ -6,16 +6,15 @@ import { BarChart } from '../components/Charts';
 import DailySalesModal from '../components/DailySalesModal';
 import DashboardThread from '../components/DashboardThread';
 import { useStore } from '../store/AppStore';
-import { TODAY, SHOP, SUNDAY_FORECAST, LAST_WEEK, ANALYSIS } from '../data/mockData';
-import { addDays, dayShort, longDate, rm, signedPct } from '../lib/format';
+import { SUNDAY_FORECAST, LAST_WEEK, ANALYSIS } from '../data/mockData';
+import { addDays, dayShort, localToday, longDate, mondayOf, rm, signedPct } from '../lib/format';
 import { getAiReply, chatMessage } from '../lib/aiReply';
 import { buildAdvice } from '../lib/advice';
 
-const WEEK_START = '2026-10-05'; // Monday of the current week
 
 export default function Dashboard() {
   const store = useStore();
-  const { products, productsById, sales, lowCount, outCount, stockValue, salesFor, dashboardChat, typingChatId, dispatch } = store;
+  const { products, productsById, sales, lowCount, outCount, stockValue, salesFor, dashboardChat, typingChatId, dispatch, shop } = store;
   const storeRef = useRef(store);
   storeRef.current = store;
   const [draft, setDraft] = useState('');
@@ -26,12 +25,12 @@ export default function Dashboard() {
   // /?record=1 opens the daily sales modal directly (handy for demos and links).
   const [recording, setRecording] = useState(params.get('record') === '1');
 
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(WEEK_START, i));
-  const weekSales = weekDays.filter((d) => d <= TODAY).reduce((s, d) => s + salesFor(d).sales, 0);
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(mondayOf(localToday()), i)); // Mon–Sun
+  const weekSales = weekDays.filter((d) => d <= localToday()).reduce((s, d) => s + salesFor(d).sales, 0);
 
   const bestSeller = useMemo(() => {
     const units = {};
-    weekDays.filter((d) => d <= TODAY).forEach((d) => {
+    weekDays.filter((d) => d <= localToday()).forEach((d) => {
       Object.entries(sales[d] || {}).forEach(([id, u]) => (units[id] = (units[id] || 0) + u));
     });
     const [id, u] = Object.entries(units).sort((a, b) => b[1] - a[1])[0] || [];
@@ -41,9 +40,9 @@ export default function Dashboard() {
   const chartData =
     range === 'week'
       ? weekDays.map((d) => {
-          if (d > TODAY) return { label: dayShort(d), value: SUNDAY_FORECAST, kind: 'forecast', tip: `Forecast · ${rm(SUNDAY_FORECAST)}` };
+          if (d > localToday()) return { label: dayShort(d), value: SUNDAY_FORECAST, kind: 'forecast', tip: `Forecast · ${rm(SUNDAY_FORECAST)}` };
           const v = salesFor(d).sales;
-          return d === TODAY
+          return d === localToday()
             ? { label: dayShort(d), value: v, kind: 'current', tip: `Today · ${rm(v)}` }
             : { label: dayShort(d), value: v, kind: 'past' };
         })
@@ -55,7 +54,7 @@ export default function Dashboard() {
         }));
 
   const weekdayAvg = weekDays.slice(0, 5).reduce((s, d) => s + salesFor(d).sales, 0) / 5;
-  const todaySales = salesFor(TODAY).sales;
+  const todaySales = salesFor(localToday()).sales;
   const insight =
     range === 'week'
       ? `Saturday sales are ${Math.round((todaySales / weekdayAvg - 1) * 100)}% above your weekday average.`
@@ -89,8 +88,8 @@ export default function Dashboard() {
       <div className="page__main">
         <header className="topbar">
           <div>
-            <h1>Good morning, {SHOP.owner}</h1>
-            <p className="muted">{longDate(TODAY)} · Here’s how your shop is doing</p>
+            <h1>Good morning, {shop.owner}</h1>
+            <p className="muted">{longDate(localToday())} · Here’s how your shop is doing</p>
           </div>
           <div className="topbar__actions">
             <button className="btn btn--primary" onClick={() => setRecording(true)}>Record New Sale</button>

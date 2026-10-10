@@ -3,8 +3,8 @@
 // Each item: { id, tone, tag, title, body, action, ask } — `ask` is the question
 // sent to the advisor when the action button is pressed.
 import { stockStatus, suggestedQty } from '../store/AppStore';
-import { TODAY, UPCOMING } from '../data/mockData';
-import { daysBetween, rm2, shortDate } from './format';
+import { UPCOMING } from '../data/config';
+import { daysBetween, localToday, rm2, shortDate } from './format';
 
 export function buildAdvice(store) {
   const { products, reorder, dismissedRecs } = store;
@@ -48,7 +48,7 @@ export function buildAdvice(store) {
 
   // 3. Sellable stock that expires within 3 days.
   products
-    .filter((p) => p.price && p.stock > 0 && p.expiry && daysBetween(TODAY, p.expiry) >= 0 && daysBetween(TODAY, p.expiry) <= 3)
+    .filter((p) => p.price && p.stock > 0 && p.expiry && daysBetween(localToday(), p.expiry) >= 0 && daysBetween(localToday(), p.expiry) <= 3)
     .forEach((p) => {
       items.push({
         id: `expiry-${p.id}`,

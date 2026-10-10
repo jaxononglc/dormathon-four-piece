@@ -67,5 +67,12 @@ export function downloadCSV(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
-// The real calendar day on this device (the demo data stays pinned to TODAY).
+// Today on this device, as yyyy-mm-dd.
 export const localToday = () => toISO(new Date());
+
+// Monday of the week containing `iso` (the Dashboard week runs Mon–Sun).
+export const mondayOf = (iso) => addDays(iso, -((parseISO(iso).getDay() + 6) % 7));
+
+// "Kedai Kak Ros" → "KR" (avatar letters).
+export const initials = (name = '') =>
+  name.split(/\s+/).filter(Boolean).map((w) => w[0]).filter((c) => /[A-Za-z0-9]/.test(c)).slice(-2).join('').toUpperCase() || '?';

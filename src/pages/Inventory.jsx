@@ -7,8 +7,7 @@ import StockLogModal from '../components/StockLogModal';
 import { ConfirmDialog } from '../components/Modal';
 import { useStore, stockStatus } from '../store/AppStore';
 import { useToast } from '../store/Toast';
-import { TODAY } from '../data/mockData';
-import { downloadCSV, rm2 } from '../lib/format';
+import { downloadCSV, localToday, rm2 } from '../lib/format';
 
 // Stock-level filter values used in the URL (?level=…) and the filter dropdown.
 // 'restock' = low + out (what the Dashboard "Need restocking" card links to).
@@ -100,7 +99,7 @@ export function StockCatalog() {
   );
 
   function exportCSV() {
-    downloadCSV(`inventory-${TODAY}.csv`, [
+    downloadCSV(`inventory-${localToday()}.csv`, [
       ['Name', 'SKU', 'Category', 'Supplier', 'Location', 'Stock', 'Min', 'Unit', 'Unit cost (RM)', 'Price (RM)', 'Expiry', 'Status'],
       ...rows.map((p) => [p.name, p.sku, p.category, p.supplier, p.location, p.stock, p.min, p.unit, p.cost.toFixed(2), p.price?.toFixed(2) ?? '', p.expiry, stockStatus(p)]),
     ]);

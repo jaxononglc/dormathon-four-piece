@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { PackagePlus, Pencil } from 'lucide-react';
 import Modal from './Modal';
-import { UNITS } from '../data/mockData';
+import { UNITS } from '../data/config';
 import Combobox from './Combobox';
 import { useStore } from '../store/AppStore';
 import { useToast } from '../store/Toast';

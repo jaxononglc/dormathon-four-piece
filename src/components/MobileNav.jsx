@@ -3,13 +3,13 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Sparkles, Settings } from 'lucide-react';
 import { NAV } from './Sidebar';
 import { useStore } from '../store/AppStore';
-import { SHOP } from '../data/mockData';
+import { initials } from '../lib/format';
 
 // Phone layout only (CSS hides these on wider screens, where Sidebar is used).
 
 // Top bar: logo on the left, settings + account on the right.
 export function MobileTopbar() {
-  const { products, backend } = useStore();
+  const { products, shop } = useStore();
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
   const navigate = useNavigate();
@@ -34,22 +34,19 @@ export function MobileTopbar() {
           <Settings size={18} />
         </NavLink>
         <button className="m-avatar" onClick={() => setOpen((o) => !o)} aria-label="Account" aria-expanded={open}>
-          {SHOP.initials}
+          {initials(shop.name)}
         </button>
         {open && (
           <div className="m-account">
             <div className="shop-card">
-              <div className="shop-card__avatar">{SHOP.initials}</div>
+              <div className="shop-card__avatar">{initials(shop.name)}</div>
               <div>
-                <div className="shop-card__name">{SHOP.name}</div>
-                <div className="shop-card__meta">{SHOP.type} · {products.length} products</div>
+                <div className="shop-card__name">{shop.name}</div>
+                <div className="shop-card__meta">{shop.type} · {products.length} products</div>
               </div>
             </div>
             <div className="m-account__row">
-              <span>Owner</span><b>{SHOP.owner}</b>
-            </div>
-            <div className="m-account__row">
-              <span>Data</span><b>{backend === 'online' ? 'Synced to database' : backend === 'connecting' ? 'Connecting…' : 'This device only'}</b>
+              <span>Owner</span><b>{shop.owner}</b>
             </div>
             <button className="btn btn--outline btn--sm" onClick={() => navigate('/settings')}><Settings size={14} />Settings</button>
           </div>

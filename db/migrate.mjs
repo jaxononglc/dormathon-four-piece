@@ -10,7 +10,7 @@ import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { Pool, neonConfig } from '@neondatabase/serverless';
 import { SHOP_ID, baseQueries, fixSequences, updateTotals } from '../server/seed.js';
-import { CATEGORIES, STOCK_LOG } from '../src/data/mockData.js';
+import { CATEGORIES, STOCK_LOG } from './demo-data.js';
 
 const OLD_APP = ['products', 'categories', 'suppliers', 'sales', 'chats', 'messages', 'dismissed_advice', 'stock_logs'];
 const OLD_TEAM = ['Category', 'Inventory', 'Item', 'Restocklog', 'Sales', 'SalesItem', 'Shop', 'Supplier', 'User']; // quoted names

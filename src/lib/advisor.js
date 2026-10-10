@@ -2,7 +2,6 @@
 // so replies stay consistent with what the rest of the app shows.
 import { stockStatus, suggestedQty } from '../store/AppStore';
 import { rm, rm2 } from './format';
-import { SHOP } from '../data/mockData';
 
 export function advisorReply(text, store) {
   const q = text.toLowerCase();
@@ -12,7 +11,7 @@ export function advisorReply(text, store) {
   const order = text.match(/draft a whatsapp order to (.+) for (\d+) (\S+) of (.+)$/i);
   if (order) {
     const [, supplier, qty, unit, item] = order;
-    return { type: 'text', text: `Here’s a draft for ${supplier}:\n\n“Salam, ini Ros dari ${SHOP.name}. Saya nak order ${qty} ${unit} ${item}. Boleh hantar esok? Terima kasih!”\n\nCopy it into WhatsApp — sending is not connected in this demo.` };
+    return { type: 'text', text: `Here’s a draft for ${supplier}:\n\n“Salam, ini ${store.shop.owner} dari ${store.shop.name}. Saya nak order ${qty} ${unit} ${item}. Boleh hantar esok? Terima kasih!”\n\nCopy it into WhatsApp — sending is not connected in this demo.` };
   }
   const promo = text.match(/write a whatsapp promo for (.+) at 20% off/i);
   if (promo) {

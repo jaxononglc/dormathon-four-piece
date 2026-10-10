@@ -2,14 +2,17 @@
 // sent through POST /api/ai, which adds the API key on the server (server/api.js),
 // so the key never reaches the browser.
 import { stockStatus, suggestedQty } from '../store/AppStore';
-import { SHOP, TODAY, UPCOMING, MARGIN_TARGET } from '../data/mockData';
-import { addDays, dayShort } from './format';
+import { UPCOMING, MARGIN_TARGET } from '../data/config';
+import { addDays, dayShort, localToday, longDate, mondayOf } from './format';
 import { api } from './api';
 
 // A compact snapshot of the live store so answers match what the app shows.
 function shopContext(store) {
-  const { products, salesFor, reorder } = store;
-  const week = Array.from({ length: 6 }, (_, i) => addDays('2026-10-05', i))
+  const { products, salesFor, reorder, shop } = store;
+  const today = localToday();
+  const monday = mondayOf(today);
+  const week = Array.from({ length: 7 }, (_, i) => addDays(monday, i))
+    .filter((d) => d <= today)
     .map((d) => `${dayShort(d)} ${d}: RM ${salesFor(d).sales.toFixed(0)}`)
     .join(', ');
   const rows = products
@@ -21,7 +24,7 @@ function shopContext(store) {
   const restock = reorder.map((p) => `${p.name}: order ${suggestedQty(p)} ${p.unit} ≈ RM ${(suggestedQty(p) * p.cost).toFixed(2)}`).join('; ');
 
   return `You are Bijak Advisor, the AI assistant inside "Bijak AI", an inventory and sales app for small Malaysian businesses.
-You are talking to ${SHOP.owner}, owner of ${SHOP.name} (${SHOP.type}). Today is ${TODAY} (Saturday).
+You are talking to ${shop.owner}, owner of ${shop.name} (${shop.type}). Today is ${today} (${longDate(today).split(',')[0]}).
 
 Rules:
 - Answer in the same language the user writes in (English, Bahasa Melayu or Chinese).
@@ -29,7 +32,7 @@ Rules:
 - Use RM for money. Only use numbers from the data below; if something is not in the data, say so instead of guessing.
 - Margin target is ${Math.round(MARGIN_TARGET * 100)}%. Upcoming: ${UPCOMING.map((u) => `${u.title} ${u.date}`).join(', ')}.
 
-Sales this week: ${week} (Sunday not recorded yet).
+Sales this week so far (RM 0 = not recorded yet): ${week}.
 Items needing restock: ${restock || 'none'}.
 Inventory:
 ${rows}`;

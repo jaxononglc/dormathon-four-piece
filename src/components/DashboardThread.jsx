@@ -1,6 +1,6 @@
 import { Sparkles } from 'lucide-react';
 import AdviceCard from './AdviceCard';
-import { SHOP } from '../data/mockData';
+import { useStore } from '../store/AppStore';
 
 const STARTERS = ['Should I stock up for Deepavali?', 'Why are sales up?', 'Which items lose money?'];
 
@@ -9,12 +9,13 @@ const STARTERS = ['Should I stock up for Deepavali?', 'Why are sales up?', 'Whic
 // and the Dashboard chats in AI Advisor, so both look the same.
 // `rec`: suggestion object, null = nothing urgent, undefined = past day (no live card).
 export default function DashboardThread({ messages, rec, typing, onAsk, onDismiss }) {
+  const { shop } = useStore();
   const live = rec !== undefined;
   return (
     <>
       <div className="msg msg--ai">
         <div className="ai-avatar"><Sparkles size={13} /></div>
-        <div className="bubble bubble--ai">Good morning, {SHOP.owner}! I checked last night’s sales and your stock. Here’s what I’d do today:</div>
+        <div className="bubble bubble--ai">Good morning, {shop.owner}! I checked last night’s sales and your stock. Here’s what I’d do today:</div>
       </div>
       {live && <AdviceCard item={rec} disabled={typing} onAction={(a) => onAsk(a.ask)} onDismiss={onDismiss} />}
       {messages.map((m) =>
