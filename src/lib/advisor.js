@@ -7,8 +7,8 @@ export function advisorReply(text, store) {
   const q = text.toLowerCase();
   const { reorder, products, salesFor } = store;
 
-  if (/(800|budget|money to spend|only have)/.test(q)) {
-    return { type: 'budget' };
+  if (/(budget|money to spend|only have)/.test(q)) {
+    return { type: 'text', text: 'Start with the items that are out of stock, then the low ones. Ask “What is low on stock?” to see the list with costs.' };
   }
   if (/(supplier|message)/.test(q)) {
     const bySupplier = {};
@@ -64,7 +64,7 @@ export function advisorReply(text, store) {
     };
   }
   if (/(deepavali|festival|plan)/.test(q)) {
-    return { type: 'plan' };
+    return { type: 'text', text: 'Deepavali is on 8 Nov. Orders usually jump in the 2 weeks before festivals, so restock flour, butter, sugar and cake boxes by 25 Oct. Connect Gemini for a detailed plan.' };
   }
   return {
     type: 'text',

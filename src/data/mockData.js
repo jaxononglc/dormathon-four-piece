@@ -143,10 +143,3 @@ export const UPCOMING = [
   { title: 'Payday', date: '25 Oct', note: 'in 15 days', color: 'green' },
   { title: 'Deepavali', date: '8 Nov', note: 'in 4 weeks', color: 'amber' },
 ];
-
-export const RECENT_CHATS = [
-  { title: 'Why did sales drop on Tuesday?', when: 'Yesterday' },
-  { title: 'Price for new cupcake box', when: '6 Oct' },
-  { title: 'Weekly reorder', when: '3 Oct' },
-  { title: 'Is my kuih pricing too low?', when: '28 Sep' },
-];

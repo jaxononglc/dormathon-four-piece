@@ -1,19 +1,25 @@
-import { useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Box, AlertTriangle, Receipt, LineChart, Sparkles, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Box, AlertTriangle, Receipt, LineChart, Sparkles, ArrowRight, CheckCircle2, RotateCcw } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
 import { BarChart } from '../components/Charts';
 import DailySalesModal from '../components/DailySalesModal';
 import { useStore, suggestedQty, stockStatus } from '../store/AppStore';
 import { TODAY, SHOP, SUNDAY_FORECAST, LAST_WEEK, ANALYSIS } from '../data/mockData';
 import { addDays, dayShort, longDate, rm, rm2, signedPct } from '../lib/format';
+import { getAiReply, chatMessage } from '../lib/aiReply';
 
 const WEEK_START = '2026-10-05'; // Monday of the current week
+const STARTERS = ['Should I stock up for Deepavali?', 'Why are sales up?', 'Which items lose money?'];
 
 export default function Dashboard() {
   const store = useStore();
-  const { products, productsById, sales, reorder, lowCount, outCount, stockValue, salesFor, dismissedRecs, dispatch } = store;
-  const navigate = useNavigate();
+  const { products, productsById, sales, reorder, lowCount, outCount, stockValue, salesFor, dismissedRecs, dashboardChat, typingChatId, dispatch } = store;
+  const storeRef = useRef(store);
+  storeRef.current = store;
+  const [draft, setDraft] = useState('');
+  const typing = typingChatId === 'dashboard';
+  const bodyRef = useRef(null);
   const [range, setRange] = useState('week');
   const [params] = useSearchParams();
   // /?record=1 opens the daily sales modal directly (handy for demos and links).
@@ -59,7 +65,25 @@ export default function Dashboard() {
     .filter((p) => p.supplier !== 'Own kitchen' && !dismissedRecs.includes(p.id))
     .sort((a, b) => a.stock / a.min - b.stock / b.min)[0];
 
-  const ask = (text) => navigate('/advisor', { state: { ask: text } });
+  // The panel keeps one running conversation (store.dashboardChat), so it is still
+  // here after visiting other pages, and a reply that lands meanwhile is kept.
+  async function ask(text) {
+    const t = text.trim();
+    if (!t || storeRef.current.typingChatId === 'dashboard') return;
+    const userMsg = chatMessage('user', t);
+    const history = [...storeRef.current.dashboardChat, userMsg];
+    dispatch({ type: 'addDashboardMessage', message: userMsg });
+    dispatch({ type: 'setTyping', chatId: 'dashboard' });
+    setDraft('');
+    const reply = await getAiReply(history, storeRef.current);
+    dispatch({ type: 'addDashboardMessage', message: chatMessage('ai', reply) });
+    dispatch({ type: 'setTyping', chatId: null });
+  }
+
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  }, [dashboardChat.length, typing]);
 
   return (
     <div className="page page--with-panel">
@@ -115,9 +139,19 @@ export default function Dashboard() {
             <div className="strong">Bijak Advisor</div>
             <div className="online"><i />Watching {products.length} products</div>
           </div>
+          {dashboardChat.length > 0 && (
+            <button
+              className="icon-btn ai-panel__clear"
+              title="Clear this conversation"
+              aria-label="Clear conversation"
+              disabled={typing}
+              onClick={() => dispatch({ type: 'clearDashboardChat' })}
+            >
+              <RotateCcw size={16} />
+            </button>
+          )}
         </div>
-        <div className="ai-panel__body">
-          <div className="timestamp">Today, 8:02 am</div>
+        <div className="ai-panel__body" ref={bodyRef}>
           <div className="msg msg--ai">
             <div className="ai-avatar"><Sparkles size={13} /></div>
             <div className="bubble bubble--ai">Good morning, {SHOP.owner}! I checked last night’s sales and your stock. Here’s what I’d do today:</div>
@@ -132,7 +166,7 @@ export default function Dashboard() {
                 {rec.stock === 0 ? `You’ve run out of ${rec.name}.` : `Only ${rec.stock} ${rec.unit} left — your minimum is ${rec.min} ${rec.unit}.`} Order {suggestedQty(rec)} {rec.unit} from {rec.supplier} (≈ {rm2(suggestedQty(rec) * rec.cost)}) so you don’t run out.
               </p>
               <div className="row gap-8">
-                <button className="btn btn--primary btn--xs" onClick={() => ask('Message my suppliers')}>Draft order</button>
+                <button className="btn btn--primary btn--xs" onClick={() => ask(`Draft a WhatsApp order to ${rec.supplier} for ${suggestedQty(rec)} ${rec.unit} of ${rec.name}`)}>Draft order</button>
                 <button className="btn btn--ghost btn--xs" onClick={() => dispatch({ type: 'dismissRec', id: rec.id })}>Not now</button>
               </div>
             </div>
@@ -142,29 +176,39 @@ export default function Dashboard() {
               <p className="small">Nothing urgent to reorder right now.</p>
             </div>
           )}
-          <div className="msg msg--user"><div className="bubble bubble--user">Should I stock up for Deepavali?</div></div>
-          <div className="msg msg--ai">
-            <div className="ai-avatar"><Sparkles size={13} /></div>
-            <div className="bubble bubble--ai">
-              Yes — it’s about 4 weeks away (8 Nov). Your cookie and kuih orders usually jump in the 2 weeks before festivals. I’d order extra flour, butter and cake boxes by 25 Oct. Want me to build a stock plan?
+          {dashboardChat.map((m) =>
+            m.role === 'user' ? (
+              <div key={m.id} className="msg msg--user"><div className="bubble bubble--user">{m.text}</div></div>
+            ) : (
+              <div key={m.id} className="msg msg--ai">
+                <div className="ai-avatar"><Sparkles size={13} /></div>
+                <div className="bubble bubble--ai pre">{m.text}</div>
+              </div>
+            )
+          )}
+          {typing && (
+            <div className="msg msg--ai">
+              <div className="ai-avatar"><Sparkles size={13} /></div>
+              <div className="typing"><i /><i /><i /></div>
             </div>
-          </div>
-          <div className="chips chips--indent">
-            {['Yes, build the stock plan', 'Why are sales up?', 'Which items lose money?'].map((c) => (
-              <button key={c} className="chip-btn" onClick={() => ask(c)}>{c}</button>
-            ))}
-          </div>
+          )}
+          {dashboardChat.length === 0 && (
+            <div className="chips chips--indent">
+              {STARTERS.map((c) => (
+                <button key={c} className="chip-btn" onClick={() => ask(c)}>{c}</button>
+              ))}
+            </div>
+          )}
         </div>
         <form
           className="ai-panel__composer"
           onSubmit={(e) => {
             e.preventDefault();
-            const text = new FormData(e.currentTarget).get('q').trim();
-            if (text) ask(text);
+            ask(draft);
           }}
         >
-          <input name="q" placeholder="Ask about your stock or sales…" />
-          <button className="send-btn" aria-label="Send"><ArrowRight size={16} /></button>
+          <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Ask about your stock or sales…" />
+          <button className="send-btn" aria-label="Send" disabled={!draft.trim() || typing}><ArrowRight size={16} /></button>
         </form>
       </aside>
 

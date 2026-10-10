@@ -11,13 +11,22 @@ const initialState = () => ({
   suppliers: SUPPLIERS,
   sales: SALES_RECORDS,
   advisorUnread: 3,
+  // AI Advisor conversations. Stand-in for a `chats` table (+ `messages` table).
+  // TODO(backend): GET /chats on load, POST /chats on first message,
+  // POST /chats/:id/messages per message, DELETE /chats/:id.
+  chats: [], // [{ id, title, createdAt, updatedAt, messages: [{ id, role, text, at }] }]
+  activeChatId: null, // null = the default "new chat" screen
+  typingChatId: null, // chat waiting for an AI reply, or 'dashboard' (not persisted)
+  // The Dashboard panel keeps exactly one running conversation.
+  // TODO(backend): store it as a chat with kind = 'dashboard'.
+  dashboardChat: [], // [{ id, role, text, at }]
   dismissedRecs: [],
 });
 
 function load() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return { ...initialState(), ...JSON.parse(raw) };
+    if (raw) return { ...initialState(), ...JSON.parse(raw), typingChatId: null };
   } catch {
     // ignore broken storage
   }
@@ -73,6 +82,31 @@ function reducer(state, action) {
     }
     case 'dismissRec':
       return { ...state, dismissedRecs: [...state.dismissedRecs, action.id] };
+    case 'startChat':
+      return { ...state, chats: [action.chat, ...state.chats], activeChatId: action.chat.id };
+    case 'addMessage':
+      // 'dashboard' is the Dashboard panel's single conversation.
+      if (action.chatId === 'dashboard') return { ...state, dashboardChat: [...state.dashboardChat, action.message] };
+      return {
+        ...state,
+        chats: state.chats.map((c) =>
+          c.id === action.chatId ? { ...c, messages: [...c.messages, action.message], updatedAt: action.message.at } : c
+        ),
+      };
+    case 'addDashboardMessage':
+      return { ...state, dashboardChat: [...state.dashboardChat, action.message] };
+    case 'clearDashboardChat':
+      return { ...state, dashboardChat: [] };
+    case 'openChat':
+      return { ...state, activeChatId: action.id };
+    case 'deleteChat':
+      return {
+        ...state,
+        chats: state.chats.filter((c) => c.id !== action.id),
+        activeChatId: state.activeChatId === action.id ? null : state.activeChatId,
+      };
+    case 'setTyping':
+      return { ...state, typingChatId: action.chatId };
     case 'readAdvisor':
       return state.advisorUnread ? { ...state, advisorUnread: 0 } : state;
     case 'reset':
@@ -113,7 +147,8 @@ export function StoreProvider({ children }) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      const { typingChatId, ...saved } = state; // eslint-disable-line no-unused-vars
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
     } catch {
       // storage full or blocked — the demo still works in memory
     }
