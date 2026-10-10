@@ -104,6 +104,9 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .topbar p { font-size: 14px; margin-top: 4px; }
 .topbar__actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* Title that shrinks (its text wraps) so the actions stay on the same row. */
+.topbar__title { flex: 1 1 280px; min-width: 0; }
+.topbar p.topbar__note { margin-top: 2px; font-size: 13px; }
 .split { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 
 /* ===== Buttons ===== */
@@ -187,6 +190,7 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 
 .insight { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: var(--indigo-50); color: var(--ink); border-radius: 10px; font-size: 13px; font-weight: 500; margin-top: 12px; }
 .insight svg { color: var(--indigo); flex-shrink: 0; }
+.insight--forecast { margin-top: 8px; background: var(--bg); color: var(--text); font-weight: 400; }
 
 /* ===== Charts ===== */
 .chart { position: relative; }
@@ -376,6 +380,7 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 .big-number { font-size: 24px; font-weight: 800; color: var(--indigo); }
 
 /* ===== Sales analysis ===== */
+.card p.empty { text-align: center; padding: 40px 0; }
 .ai-summary { display: flex; align-items: center; gap: 14px; padding: 16px 18px; border: 1px solid var(--indigo-200); border-radius: var(--radius); background: linear-gradient(90deg, #eef2ff, #f5f3ff); }
 .ai-summary__text { flex: 1; font-size: 14px; }
 .ai-summary__text p { color: var(--text); line-height: 1.55; margin-top: 3px; }

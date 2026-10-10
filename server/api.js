@@ -309,6 +309,82 @@ async function askGemini({ system, contents }) {
   return { text };
 }
 
+// ---- Sales forecast (Dashboard "Daily sales" chart) ----
+// Gemini predicts revenue for the given future dates from the shop's daily revenue
+// (last 8 weeks, one line per day, so the prompt stays small) and upcoming events.
+const FORECAST_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    forecasts: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          date: { type: 'STRING' },
+          revenue: { type: 'NUMBER' },
+          reason: { type: 'STRING', description: 'max 15 words, plain English' },
+        },
+        required: ['date', 'revenue', 'reason'],
+      },
+    },
+  },
+  required: ['forecasts'],
+};
+const forecastCache = new Map();
+const weekday = (iso) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-MY', { timeZone: 'UTC', weekday: 'short' });
+
+async function forecastSales({ today, dates, events = [] }) {
+  const iso = /^\d{4}-\d{2}-\d{2}$/;
+  if (!iso.test(today || '')) throw new HttpError(400, 'Bad today');
+  const days = (dates || []).filter((d) => iso.test(d) && d > today).slice(0, 7);
+  if (!days.length) return { forecasts: [] };
+
+  const rows = await db().query(
+    `SELECT s.Sales_Date::text AS date, sum(si.SalesItem_Quantity * si.SalesItem_UnitPrice)::float8 AS revenue
+     FROM Sales s JOIN SalesItem si ON si.Sales_ID = s.Sales_ID
+     WHERE s.Shop_ID = $1 AND s.Sales_Date BETWEEN $2::date - 55 AND $2::date
+     GROUP BY 1 ORDER BY 1`,
+    [SHOP_ID, today]
+  );
+  if (!rows.length) return { forecasts: [] }; // nothing to base a forecast on
+
+  const history = rows.map((r) => `${r.date} ${weekday(r.date)} | ${Math.round(r.revenue)}`);
+  const eventLines = (events || []).slice(0, 5).map((e) => `${String(e.title)}: ${String(e.date)}`);
+  const key = JSON.stringify([today, days, history, eventLines]);
+  if (forecastCache.has(key)) return forecastCache.get(key);
+
+  const system = `You forecast daily revenue for a small Malaysian home bakery.
+Today is ${today} (${weekday(today)}). Dates missing from the history had no sales recorded (not necessarily zero sales).
+Use weekday patterns, the recent trend and upcoming events. Be realistic: stay close to similar past days unless there is a reason.
+Return one forecast per requested date, revenue in RM rounded to the nearest 10, and a short reason.
+
+Daily revenue history (date weekday | RM):
+${history.join('\n')}
+${eventLines.length ? `\nUpcoming events:\n${eventLines.join('\n')}` : ''}
+
+Forecast these dates: ${days.map((d) => `${d} (${weekday(d)})`).join(', ')}`;
+
+  const text = await callGemini({
+    system,
+    contents: [{ role: 'user', parts: [{ text: 'Return the forecast.' }] }],
+    generationConfig: { temperature: 0.2, maxOutputTokens: 2048, responseMimeType: 'application/json', responseSchema: FORECAST_SCHEMA },
+  });
+  let out;
+  try {
+    out = JSON.parse(text);
+  } catch {
+    throw new HttpError(502, 'Gemini returned data the app could not read');
+  }
+  const byDate = new Map((out.forecasts || []).map((f) => [String(f.date), f]));
+  const result = {
+    forecasts: days
+      .filter((d) => Number.isFinite(Number(byDate.get(d)?.revenue)))
+      .map((d) => ({ date: d, revenue: Math.max(0, Math.round(Number(byDate.get(d).revenue))), reason: String(byDate.get(d).reason || '') })),
+  };
+  forecastCache.set(key, result);
+  return result;
+}
+
 // ---- Scan a photo of a handwritten sales record ----
 // The photo is resized in the browser (src/lib/scan.js), so it stays well under this.
 // HEIC that the browser cannot decode is sent as is (Gemini reads HEIC/HEIF itself).
@@ -483,6 +559,7 @@ const routes = [
 
   ['POST', /^\/ai$/, (_, __, body) => askGemini(body || {})],
   ['POST', /^\/scan$/, (_, __, body) => scanSales(body || {})],
+  ['POST', /^\/forecast$/, (_, __, body) => forecastSales(body || {})],
 ];
 
 export async function handleApi(method, path, query = new URLSearchParams(), body = {}) {

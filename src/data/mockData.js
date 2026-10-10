@@ -1,9 +1,6 @@
 // Placeholder numbers for the analysis screens (Sales analysis, Dashboard comparisons
 // and forecast). Not in the database yet — replace with values computed from real sales.
 
-// AI forecast for tomorrow (Sunday), shown as the dashed bar.
-export const SUNDAY_FORECAST = 1300;
-
 // Previous-week totals used for the "vs last week" deltas.
 export const LAST_WEEK = { sales: 4937, stockValue: 2113 };
 

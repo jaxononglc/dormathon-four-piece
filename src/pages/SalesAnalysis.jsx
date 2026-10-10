@@ -1,100 +1,101 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { CalendarDays, Receipt, ShoppingBag, TrendingUp, LineChart as LineIcon, Sparkles, ArrowRight, AlertTriangle, Check, Download } from 'lucide-react';
+import { CalendarDays, Receipt, Package, PackageX, LineChart as LineIcon, Sparkles, ArrowRight, AlertTriangle, Check, Download } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
 import { LineChart, Sparkline } from '../components/Charts';
 import { useStore } from '../store/AppStore';
 import { useToast } from '../store/Toast';
-import { ANALYSIS, TOP_PRODUCTS, SLOW_MOVERS } from '../data/mockData';
 import { MARGIN_TARGET } from '../data/config';
-import { downloadCSV, pct, rm, rm2, signedPct } from '../lib/format';
+import { analyse, PERIODS } from '../lib/analysis';
+import { downloadCSV, localToday, pct, rm, rm2, signedPct } from '../lib/format';
 
 const SORTS = { revenue: 'Revenue', units: 'Units', margin: 'Margin' };
 
+// Every number is worked out in code from the store's database data (lib/analysis.js).
 export default function SalesAnalysis() {
-  const { productsById, shop } = useStore();
+  const { productsById, products, sales, damage, shop } = useStore();
   const toast = useToast();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   // ?period=7d|30d|6w (the Dashboard cards link here with 7d)
-  const period = ANALYSIS[params.get('period')] ? params.get('period') : '6w';
+  const period = PERIODS[params.get('period')] ? params.get('period') : '6w';
   const setPeriod = (p) => setParams(p === '6w' ? {} : { period: p }, { replace: true });
+  const [sort, setSort] = useState('revenue');
+  const [done, setDone] = useState({});
+
+  const a = useMemo(
+    () => analyse(period, localToday(), { sales, damage, products, productsById, marginTarget: MARGIN_TARGET }),
+    [period, sales, damage, products, productsById]
+  );
+
   // #top-products scrolls to that card (used by the Dashboard "Best seller" card).
   useEffect(() => {
     if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [location.hash]);
-  const [sort, setSort] = useState('revenue');
-  const [done, setDone] = useState({});
-  const a = ANALYSIS[period];
 
-  const aov = a.revenue / a.orders;
-  const aovPrev = a.revenuePrev / a.ordersPrev;
-  const profit = a.revenue * a.margin;
-
-  const top = TOP_PRODUCTS.map((t) => {
-    const p = productsById[t.productId];
-    if (!p) return null;
-    const units = Math.round(t.units * a.topFactor);
-    return { ...t, p, units, revenue: units * p.price, margin: (p.price - p.cost) / p.price };
-  })
-    .filter(Boolean)
-    .sort((x, y) => y[sort] - x[sort]);
-
-  const margins = Object.values(productsById)
-    .filter((p) => p.price && TOP_PRODUCTS.some((t) => t.productId === p.id))
-    .map((p) => ({ p, m: (p.price - p.cost) / p.price }))
-    .sort((x, y) => y.m - x.m);
-
-  const slow = SLOW_MOVERS.map((s) => ({ ...s, p: productsById[s.productId] })).filter((s) => s.p);
-  const tiedUp = slow.reduce((sum, s) => sum + s.p.stock * s.p.cost, 0);
+  const header = (
+    <header className="topbar">
+      <div className="topbar__title">
+        <h1>Sales analysis</h1>
+        <p className="muted">{shop.name} · {a.range} · {a.compare}</p>
+        {a.daysRecorded < a.totalDays && <p className="muted small topbar__note">Sales recorded on {a.daysRecorded} of {a.totalDays} days</p>}
+      </div>
+      <div className="topbar__actions">
+        <div className="segmented segmented--dark">
+          {Object.entries(PERIODS).map(([k, v]) => (
+            <button key={k} className={period === k ? 'is-active' : ''} onClick={() => setPeriod(k)}>{v.label}</button>
+          ))}
+        </div>
+        <span className="date-label"><CalendarDays size={16} />{a.range.replace(/ \d{4}$/, '')}</span>
+        <button className="btn btn--outline" onClick={exportReport}><Download size={16} />Export report</button>
+      </div>
+    </header>
+  );
 
   function exportReport() {
     downloadCSV(`sales-report-${period}.csv`, [
       [`${shop.name} — Sales report`, a.range],
       [],
-      ['Revenue (RM)', a.revenue], ['Orders', a.orders], ['Avg. order value (RM)', aov.toFixed(2)], ['Gross profit (RM)', profit.toFixed(0)], ['Margin', pct(a.margin)],
+      ['Revenue (RM)', a.revenue], ['Units sold', a.unitsSold], ['Gross profit (RM)', a.grossProfit.toFixed(0)], ['Margin', pct(a.margin)],
+      ['Damaged units', a.damagedUnits], ['Damaged cost (RM)', a.damagedCost.toFixed(2)],
       [],
       ['Period', 'Revenue (RM)', 'Previous (RM)'],
-      ...a.trend.map((t, i) => [t.label, t.value, a.previous[i]]),
+      ...a.trend.map((t) => [t.label, t.value, t.previous]),
       [],
-      ['Product', 'Units', 'Revenue (RM)', 'Margin'],
-      ...top.map((t) => [t.p.name, t.units, t.revenue, pct(t.margin)]),
+      ['Product', 'Units', 'Damaged', 'Revenue (RM)', 'Margin'],
+      ...top.map((t) => [t.p.name, t.units, t.damaged, t.revenue, pct(t.margin)]),
     ]);
     toast('Report downloaded');
   }
 
-  const cookies = productsById.p11;
-  const cookieMargin = cookies ? (cookies.price - cookies.cost) / cookies.price : 0;
+  const top = [...a.topProducts].sort((x, y) => y[sort] - x[sort]);
+  const margins = a.marginByProduct;
+  const slow = a.slowMovers;
+  const tiedUp = slow.reduce((sum, s) => sum + s.p.stock * s.p.cost, 0);
+  const vsPrev = (now, prev) => (prev > 0 ? `${signedPct(now / prev - 1)} vs previous` : 'No earlier records');
+  const hasTrend = a.trend.some((t) => t.value > 0 || t.previous > 0);
 
   return (
     <div className="page">
-      <header className="topbar">
-        <div>
-          <h1>Sales analysis</h1>
-          <p className="muted">{shop.name} · {a.range} · {a.compare}</p>
-        </div>
-        <div className="topbar__actions">
-          <div className="segmented segmented--dark">
-            {Object.entries(ANALYSIS).map(([k, v]) => (
-              <button key={k} className={period === k ? 'is-active' : ''} onClick={() => setPeriod(k)}>{v.label}</button>
-            ))}
-          </div>
-          <span className="date-label"><CalendarDays size={16} />{a.range.replace(' 2026', '')}</span>
-          <button className="btn btn--outline" onClick={exportReport}><Download size={16} />Export report</button>
-        </div>
-      </header>
+      {header}
 
       <section className="kpis">
-        <KpiCard label="Revenue" value={rm(a.revenue)} icon={Receipt} delta={`${signedPct(a.revenue / a.revenuePrev - 1)} vs previous`} tone="up" />
-        <KpiCard label="Orders" value={a.orders.toLocaleString()} icon={ShoppingBag} delta={`${signedPct(a.orders / a.ordersPrev - 1)} vs previous`} tone="up" />
-        <KpiCard label="Avg. order value" value={rm2(aov)} icon={TrendingUp} delta={`${aov >= aovPrev ? '+' : '−'}${rm2(Math.abs(aov - aovPrev))} per order`} tone={aov >= aovPrev ? 'up' : 'down'} />
+        <KpiCard label="Revenue" value={rm(a.revenue)} icon={Receipt} delta={vsPrev(a.revenue, a.revenuePrev)} tone={a.revenue >= a.revenuePrev ? 'up' : 'down'} />
+        <KpiCard label="Units sold" value={a.unitsSold.toLocaleString()} icon={Package} delta={vsPrev(a.unitsSold, a.unitsSoldPrev)} tone={a.unitsSold >= a.unitsSoldPrev ? 'up' : 'down'} />
         <KpiCard
           label="Gross profit"
-          value={rm(profit)}
+          value={rm(a.grossProfit)}
           icon={LineIcon}
-          delta={`Margin ${pct(a.margin)} · ${a.margin >= a.marginPrev ? '+' : '−'}${Math.abs((a.margin - a.marginPrev) * 100).toFixed(1)} pts`}
-          tone={a.margin >= a.marginPrev ? 'up' : 'down'}
+          delta={`Margin ${pct(a.margin)}${a.revenuePrev > 0 ? ` · ${a.margin >= a.marginPrev ? '+' : '−'}${Math.abs((a.margin - a.marginPrev) * 100).toFixed(1)} pts` : ''}`}
+          tone={a.margin >= MARGIN_TARGET ? 'up' : 'down'}
+        />
+        <KpiCard
+          label="Damaged goods"
+          value={`${a.damagedUnits} unit${a.damagedUnits === 1 ? '' : 's'}`}
+          icon={PackageX}
+          delta={a.damagedUnits ? `${rm2(a.damagedCost)} lost` : 'None this period'}
+          tone={a.damagedUnits ? 'down' : 'up'}
         />
       </section>
 
@@ -102,9 +103,7 @@ export default function SalesAnalysis() {
         <div className="ai-avatar ai-avatar--lg"><Sparkles size={19} /></div>
         <div className="ai-summary__text">
           <div className="strong">Bijak’s summary</div>
-          <p>
-            Revenue is up {signedPct(a.revenue / a.revenuePrev - 1).slice(1)}, driven mostly by weekend WhatsApp orders. But profit margin slipped because butter cost rose 14% — Butter cookies now earn only {pct(cookieMargin)}. Raising the tin price by RM 1.50 would bring it back above your {pct(MARGIN_TARGET)} target.
-          </p>
+          <p>{a.summary}</p>
         </div>
         <button className="btn btn--outline" onClick={() => navigate('/advisor', { state: { ask: 'Which items lose money?' } })}>
           Ask Advisor <ArrowRight size={16} />
@@ -122,41 +121,45 @@ export default function SalesAnalysis() {
             <span><i className="legend__line legend__line--dashed" />Previous period</span>
           </div>
         </div>
-        <LineChart labels={a.trend.map((t) => t.label)} current={a.trend.map((t) => t.value)} previous={a.previous} />
+        {hasTrend
+          ? <LineChart labels={a.trend.map((t) => t.label)} current={a.trend.map((t) => t.value)} previous={a.trend.map((t) => t.previous)} />
+          : <p className="muted empty">No sales recorded in this period.</p>}
       </section>
 
       <section className="card table-card" id="top-products">
-          <div className="card__head card--pad">
-            <div>
-              <h3>Top products</h3>
-              <p className="muted small">Best sellers this period</p>
-            </div>
-            <select className="input input--sm" value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort products">
-              {Object.entries(SORTS).map(([k, v]) => <option key={k} value={k}>Sort: {v}</option>)}
-            </select>
+        <div className="card__head card--pad">
+          <div>
+            <h3>Top products</h3>
+            <p className="muted small">Best sellers this period</p>
           </div>
-          <table className="table table--compact">
-            <thead>
-              <tr><th>#</th><th>Product</th><th>Units</th><th>Revenue</th><th>Margin</th><th>Trend</th></tr>
-            </thead>
-            <tbody>
-              {top.map((t, i) => {
-                const below = t.margin < MARGIN_TARGET;
-                const rising = t.trend[t.trend.length - 1] >= t.trend[0];
-                return (
-                  <tr key={t.productId}>
-                    <td><span className={`rank${i === 0 ? ' rank--first' : ''}`}>{i + 1}</span></td>
-                    <td className="cell-title">{t.p.name}</td>
-                    <td>{t.units}</td>
-                    <td>{rm(t.revenue)}</td>
-                    <td><span className={`tag ${below ? 'tag--red' : 'tag--green'}`}>{pct(t.margin)}</span></td>
-                    <td><Sparkline values={t.trend} color={below ? '#d97706' : rising ? '#059669' : '#dc2626'} /></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </section>
+          <select className="input input--sm" value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort products">
+            {Object.entries(SORTS).map(([k, v]) => <option key={k} value={k}>Sort: {v}</option>)}
+          </select>
+        </div>
+        <table className="table table--compact">
+          <thead>
+            <tr><th>#</th><th>Product</th><th>Units</th><th>Damaged</th><th>Revenue</th><th>Margin</th><th>Trend</th></tr>
+          </thead>
+          <tbody>
+            {top.length === 0 && <tr><td colSpan={7} className="empty">No sales in this period.</td></tr>}
+            {top.map((t, i) => {
+              const below = t.margin < MARGIN_TARGET;
+              const rising = t.trend[t.trend.length - 1] >= t.trend[0];
+              return (
+                <tr key={t.productId}>
+                  <td><span className={`rank${i === 0 ? ' rank--first' : ''}`}>{i + 1}</span></td>
+                  <td className="cell-title">{t.p.name}</td>
+                  <td>{t.units}</td>
+                  <td className={t.damaged ? 'text-red' : 'muted'}>{t.damaged || '—'}</td>
+                  <td>{rm(t.revenue)}</td>
+                  <td><span className={`tag ${below ? 'tag--red' : 'tag--green'}`}>{pct(t.margin)}</span></td>
+                  <td><Sparkline values={t.trend} color={below ? '#d97706' : rising ? '#059669' : '#dc2626'} /></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </section>
 
       <div className="grid-2">
         <section className="card card--pad">
@@ -168,11 +171,12 @@ export default function SalesAnalysis() {
             <span className="legend"><span><i className="legend__target" />Target {pct(MARGIN_TARGET)}</span></span>
           </div>
           <div className="margins">
-            {margins.map(({ p, m }) => (
+            {margins.length === 0 && <p className="muted small">No products sold in this period.</p>}
+            {margins.map(({ p, margin: m }) => (
               <div key={p.id} className="margin-row">
                 <span className="margin-row__name">{p.name}</span>
                 <div className="margin-row__track">
-                  <div className={`margin-row__bar${m < MARGIN_TARGET ? ' is-below' : ''}`} style={{ width: `${m * 100 / 0.6}%` }} />
+                  <div className={`margin-row__bar${m < MARGIN_TARGET ? ' is-below' : ''}`} style={{ width: `${Math.max(0, Math.min(100, m * 100 / 0.6))}%` }} />
                   <div className="margin-row__target" style={{ left: `${MARGIN_TARGET * 100 / 0.6}%` }} />
                 </div>
                 <b className={m < MARGIN_TARGET ? 'text-red' : ''}>{pct(m)}</b>
@@ -185,11 +189,12 @@ export default function SalesAnalysis() {
           <div className="card__head">
             <div>
               <h3>Slow movers</h3>
-              <p className="muted small">Selling much slower than usual</p>
+              <p className="muted small">Selling slowly or expiring soon</p>
             </div>
-            <span className="tag tag--amber">{rm(tiedUp)} tied up</span>
+            {slow.length > 0 && <span className="tag tag--amber">{rm(tiedUp)} tied up</span>}
           </div>
           <div className="stack-10">
+            {slow.length === 0 && <p className="muted small">Nothing is selling unusually slowly.</p>}
             {slow.map((s) => (
               <div key={s.productId} className="slow-item">
                 <span className="icon-tile icon-tile--amber"><AlertTriangle size={16} /></span>

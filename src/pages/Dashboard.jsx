@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Box, AlertTriangle, Receipt, LineChart, Sparkles, ArrowRight, RotateCcw } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
@@ -6,8 +6,9 @@ import { BarChart } from '../components/Charts';
 import DailySalesModal from '../components/DailySalesModal';
 import DashboardThread from '../components/DashboardThread';
 import { useStore } from '../store/AppStore';
-import { SUNDAY_FORECAST, LAST_WEEK, ANALYSIS } from '../data/mockData';
-import { addDays, dayShort, localToday, longDate, mondayOf, rm, signedPct } from '../lib/format';
+import { LAST_WEEK, ANALYSIS } from '../data/mockData';
+import { addDays, dayShort, localToday, longDate, mondayOf, parseISO, rm, signedPct } from '../lib/format';
+import { useForecast } from '../lib/forecast';
 import { getAiReply, chatMessage } from '../lib/aiReply';
 import { buildAdvice } from '../lib/advice';
 
@@ -37,10 +38,24 @@ export default function Dashboard() {
     return id ? { product: productsById[id], units: u } : null;
   }, [sales, productsById]);
 
+  // Rest of this week: Gemini forecast from past sales (lib/forecast.js), or a code estimate.
+  const futureDays = weekDays.filter((d) => d > localToday());
+  const revenueOn = useCallback((d) => salesFor(d).sales, [salesFor]);
+  const { forecast, loading: forecasting } = useForecast(futureDays, localToday(), revenueOn, store.aiEnabled);
+  const forecastNote = futureDays.length
+    ? futureDays.map((d) => forecast[d] && `${parseISO(d).toLocaleDateString('en-MY', { weekday: 'long' })} ${forecast[d].source === 'ai' ? 'forecast' : 'estimate'} ${rm(forecast[d].revenue)}: ${forecast[d].reason}`).filter(Boolean).join(' · ')
+    : '';
+  const futureLabel = futureDays.length === 1 ? parseISO(futureDays[0]).toLocaleDateString('en-MY', { weekday: 'long' }) : 'Later days';
+  const forecastSource = futureDays.some((d) => forecast[d]?.source === 'ai') ? 'AI forecast' : 'estimated from past sales';
+
   const chartData =
     range === 'week'
       ? weekDays.map((d) => {
-          if (d > localToday()) return { label: dayShort(d), value: SUNDAY_FORECAST, kind: 'forecast', tip: `Forecast · ${rm(SUNDAY_FORECAST)}` };
+          if (d > localToday()) {
+            const f = forecast[d];
+            const what = f?.source === 'ai' ? 'AI forecast' : 'Estimate';
+            return { label: dayShort(d), value: f?.revenue ?? 0, kind: 'forecast', tip: f ? `${what} · ${rm(f.revenue)}` : forecasting ? 'Forecasting…' : 'No forecast yet' };
+          }
           const v = salesFor(d).sales;
           return d === localToday()
             ? { label: dayShort(d), value: v, kind: 'current', tip: `Today · ${rm(v)}` }
@@ -116,7 +131,9 @@ export default function Dashboard() {
             <div>
               <h3>Daily sales</h3>
               <p className="muted small">
-                {range === 'week' ? 'This week, in RM · Sunday is AI forecast' : 'Last 5 weeks, in RM'}
+                {range === 'week'
+                  ? `This week, in RM${futureDays.length ? ` · ${futureLabel} ${futureDays.length === 1 ? 'is' : 'are'} ${forecasting ? 'being forecast…' : forecastSource}` : ''}`
+                  : 'Last 5 weeks, in RM'}
               </p>
             </div>
             <div className="segmented">
@@ -129,6 +146,12 @@ export default function Dashboard() {
             <Sparkles size={16} />
             {insight}
           </div>
+          {range === 'week' && forecastNote && (
+            <div className="insight insight--forecast">
+              <Sparkles size={16} />
+              {forecastNote}
+            </div>
+          )}
         </section>
       </div>
 
