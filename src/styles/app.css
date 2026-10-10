@@ -488,3 +488,12 @@ td.center .cell-sub { justify-content: center; }
 .dash-thread { display: flex; flex-direction: column; gap: 14px; }
 .dash-thread .rec-card { max-width: 420px; }
 .dash-thread .bubble--ai { max-width: min(85%, 560px); }
+
+/* Clickable KPI cards (Dashboard links, Inventory quick filters) */
+.kpi--link, .kpi--filter { position: relative; text-decoration: none; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s; }
+.kpi--link:hover, .kpi--filter:hover { border-color: var(--indigo-200); box-shadow: 0 8px 20px rgba(79, 70, 229, 0.1); transform: translateY(-2px); }
+.kpi--link:active, .kpi--filter:active { transform: translateY(0); }
+.kpi--filter.is-active { border-color: var(--indigo); box-shadow: 0 0 0 1px var(--indigo); background: #fafaff; }
+.kpi__go { position: absolute; right: 14px; bottom: 14px; color: var(--light); opacity: 0; transition: opacity 0.15s; }
+.kpi--link:hover .kpi__go, .kpi--link:focus-visible .kpi__go { opacity: 1; color: var(--indigo); }
+#top-products { scroll-margin-top: 24px; }

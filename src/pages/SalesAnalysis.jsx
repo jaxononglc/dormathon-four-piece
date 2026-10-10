@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { CalendarDays, Receipt, ShoppingBag, TrendingUp, LineChart as LineIcon, Sparkles, ArrowRight, AlertTriangle, Check, Download } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
 import { LineChart, Sparkline } from '../components/Charts';
@@ -14,7 +14,15 @@ export default function SalesAnalysis() {
   const { productsById } = useStore();
   const toast = useToast();
   const navigate = useNavigate();
-  const [period, setPeriod] = useState('6w');
+  const [params, setParams] = useSearchParams();
+  const location = useLocation();
+  // ?period=7d|30d|6w (the Dashboard cards link here with 7d)
+  const period = ANALYSIS[params.get('period')] ? params.get('period') : '6w';
+  const setPeriod = (p) => setParams(p === '6w' ? {} : { period: p }, { replace: true });
+  // #top-products scrolls to that card (used by the Dashboard "Best seller" card).
+  useEffect(() => {
+    if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [location.hash]);
   const [sort, setSort] = useState('revenue');
   const [done, setDone] = useState({});
   const a = ANALYSIS[period];
@@ -116,7 +124,7 @@ export default function SalesAnalysis() {
         <LineChart labels={a.trend.map((t) => t.label)} current={a.trend.map((t) => t.value)} previous={a.previous} />
       </section>
 
-      <section className="card table-card">
+      <section className="card table-card" id="top-products">
           <div className="card__head card--pad">
             <div>
               <h3>Top products</h3>

@@ -98,16 +98,18 @@ export default function Dashboard() {
         </header>
 
         <section className="kpis">
-          <KpiCard label="Stock value" value={rm(stockValue)} icon={Box} delta={`${signedPct(stockValue / LAST_WEEK.stockValue - 1)} vs last week`} tone={stockValue >= LAST_WEEK.stockValue ? 'up' : 'down'} />
+          <KpiCard to="/inventory" hint="See all stock" label="Stock value" value={rm(stockValue)} icon={Box} delta={`${signedPct(stockValue / LAST_WEEK.stockValue - 1)} vs last week`} tone={stockValue >= LAST_WEEK.stockValue ? 'up' : 'down'} />
           <KpiCard
+            to="/inventory?level=restock"
+            hint="See items that need restocking"
             label="Need restocking"
             value={`${lowCount + outCount} items`}
             icon={AlertTriangle}
             delta={outCount ? `${outCount} out of stock` : 'None out of stock'}
             tone={outCount ? 'down' : 'up'}
           />
-          <KpiCard label="Sales this week" value={rm(weekSales)} icon={Receipt} delta={`${signedPct(weekSales / LAST_WEEK.sales - 1, 0)} vs last week`} tone={weekSales >= LAST_WEEK.sales ? 'up' : 'down'} />
-          <KpiCard label="Best seller" value={bestSeller ? shortName(bestSeller.product.name) : '—'} icon={LineChart} delta={bestSeller ? `${bestSeller.units} sold this week` : null} tone="neutral" />
+          <KpiCard to="/sales?period=7d" hint="See this week’s sales" label="Sales this week" value={rm(weekSales)} icon={Receipt} delta={`${signedPct(weekSales / LAST_WEEK.sales - 1, 0)} vs last week`} tone={weekSales >= LAST_WEEK.sales ? 'up' : 'down'} />
+          <KpiCard to="/sales?period=7d#top-products" hint="See top products" label="Best seller" value={bestSeller ? shortName(bestSeller.product.name) : '—'} icon={LineChart} delta={bestSeller ? `${bestSeller.units} sold this week` : null} tone="neutral" />
         </section>
 
         <section className="card card--pad">
