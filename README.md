@@ -1,12 +1,19 @@
 ## Project Description
 This project 'bijak ai' is aimed towards to help SME to minimize their workflow while also enabling them to make smart analyzation for their business with very little amount of friction 
 
+
+Four Piece PDF Files: https://drive.google.com/file/d/1wi-QTQ10Tx9nmP_gIlIJB_GJLn3asnFF/view?usp=sharing
+
+
 ## Getting started
 
 ### Option 1: just open the live app (nothing to install)
 
 The app is already deployed and connected to its database: **https://four-bijak.vercel.app**
 It works on a phone and on a computer, so you can use it right away.
+
+
+
 
 ### Option 2: run it on your own computer
 
