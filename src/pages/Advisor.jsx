@@ -7,7 +7,7 @@ import {
 import { useStore } from '../store/AppStore';
 import { useToast } from '../store/Toast';
 import { advisorReply } from '../lib/advisor';
-import { SHOP, SUPPLIERS, UPCOMING, RECENT_CHATS, TODAY } from '../data/mockData';
+import { SHOP, UPCOMING, RECENT_CHATS, TODAY } from '../data/mockData';
 import { downloadCSV, rm } from '../lib/format';
 
 // What the Deepavali plan needs (from last year's festive orders). "Have" comes from live stock.
@@ -196,7 +196,7 @@ export default function Advisor() {
           <div className="eyebrow">DATA I’M USING</div>
           <div className="data-card"><span className="icon-tile"><Box size={16} /></span><div><div className="cell-title">Inventory</div><div className="cell-sub">{products.length} products · synced 8:02 am</div></div></div>
           <div className="data-card"><span className="icon-tile"><LineChart size={16} /></span><div><div className="cell-title">Sales history</div><div className="cell-sub">Last 90 days</div></div></div>
-          <div className="data-card"><span className="icon-tile"><Store size={16} /></span><div><div className="cell-title">Suppliers</div><div className="cell-sub">{SUPPLIERS.filter((s) => s !== 'Own kitchen').length} saved suppliers</div></div></div>
+          <div className="data-card"><span className="icon-tile"><Store size={16} /></span><div><div className="cell-title">Suppliers</div><div className="cell-sub">{store.suppliers.filter((s) => s !== 'Own kitchen').length} saved suppliers</div></div></div>
 
           <div className="eyebrow">COMING UP</div>
           {UPCOMING.map((u) => (

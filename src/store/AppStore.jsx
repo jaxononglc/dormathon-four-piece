@@ -1,10 +1,14 @@
 import { createContext, useContext, useEffect, useMemo, useReducer } from 'react';
-import { PRODUCTS, SALES_RECORDS } from '../data/mockData';
+import { CATEGORIES, PRODUCTS, SALES_RECORDS, SUPPLIERS } from '../data/mockData';
 
 const STORAGE_KEY = 'bijak-demo-v1';
 
 const initialState = () => ({
   products: PRODUCTS,
+  // Stand-ins for `categories` / `suppliers` tables. User-created entries go to
+  // the front so they show up first in the (max 5) suggestions.
+  categories: CATEGORIES,
+  suppliers: SUPPLIERS,
   sales: SALES_RECORDS,
   advisorUnread: 3,
   dismissedRecs: [],
@@ -29,6 +33,14 @@ function reducer(state, action) {
         ...state,
         products: state.products.map((p) => (p.id === action.id ? { ...p, ...action.patch } : p)),
       };
+    case 'addOption': {
+      // action.list: 'categories' | 'suppliers'
+      const name = action.name.trim();
+      const list = state[action.list];
+      if (!name || list.some((c) => c.toLowerCase() === name.toLowerCase())) return state;
+      // TODO(backend): POST /categories or /suppliers { name } and use the saved row instead.
+      return { ...state, [action.list]: [name, ...list] };
+    }
     case 'deleteProduct':
       return { ...state, products: state.products.filter((p) => p.id !== action.id) };
     case 'adjustStock':

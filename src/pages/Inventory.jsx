@@ -6,7 +6,7 @@ import StockForm from '../components/StockForm';
 import { ConfirmDialog } from '../components/Modal';
 import { useStore, stockStatus } from '../store/AppStore';
 import { useToast } from '../store/Toast';
-import { CATEGORIES, TODAY } from '../data/mockData';
+import { TODAY } from '../data/mockData';
 import { downloadCSV, rm2 } from '../lib/format';
 
 function InventoryShell({ children }) {
@@ -47,7 +47,7 @@ function InventoryShell({ children }) {
 }
 
 export function StockCatalog() {
-  const { products, dispatch } = useStore();
+  const { products, categories, dispatch } = useStore();
   const toast = useToast();
   const [params, setParams] = useSearchParams();
   const query = params.get('q') || '';
@@ -85,7 +85,7 @@ export function StockCatalog() {
         </label>
         <select className="input input--sm" value={category} onChange={(e) => setCategory(e.target.value)}>
           <option value="all">All categories</option>
-          {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+          {categories.map((c) => <option key={c}>{c}</option>)}
         </select>
         <select className="input input--sm" value={level} onChange={(e) => setLevel(e.target.value)}>
           <option value="all">All stock levels</option>

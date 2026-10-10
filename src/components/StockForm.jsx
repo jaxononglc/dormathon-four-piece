@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { PackagePlus, Pencil } from 'lucide-react';
 import Modal from './Modal';
-import { CATEGORIES, SUPPLIERS, UNITS } from '../data/mockData';
+import { UNITS } from '../data/mockData';
+import Combobox from './Combobox';
 import { useStore } from '../store/AppStore';
 import { useToast } from '../store/Toast';
 
@@ -12,7 +13,7 @@ const EMPTY = {
 
 // One form for both "Add stock" and "Edit stock details".
 export default function StockForm({ product, onClose }) {
-  const { products, dispatch } = useStore();
+  const { products, categories, suppliers, dispatch } = useStore();
   const toast = useToast();
   const editing = Boolean(product);
   const [f, setF] = useState(() =>
@@ -26,6 +27,7 @@ export default function StockForm({ product, onClose }) {
     e.preventDefault();
     const err = {};
     if (!f.name.trim()) err.name = 'Enter a product name';
+    if (!f.category) err.category = 'Pick or add a category';
     if (!f.sku.trim()) err.sku = 'Enter a SKU';
     else if (products.some((p) => p.sku.toLowerCase() === f.sku.trim().toLowerCase() && p.id !== product?.id))
       err.sku = 'This SKU is already used';
@@ -79,17 +81,29 @@ export default function StockForm({ product, onClose }) {
           {Field({ k: 'location', label: 'Location', children: <input className="input" value={f.location} onChange={set('location')} placeholder="Store room · Rack 1" /> })}
         </div>
         <div className="form__row">
-          {Field({ k: 'category', label: 'Category', children: (
-            <select className="input" value={f.category} onChange={set('category')}>
-              {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-            </select>
-          ) })}
-          {Field({ k: 'supplier', label: 'Supplier / vendor', children: (
-            <>
-              <input className="input" list="suppliers" value={f.supplier} onChange={set('supplier')} placeholder="Syarikat Maju" />
-              <datalist id="suppliers">{SUPPLIERS.map((s) => <option key={s} value={s} />)}</datalist>
-            </>
-          ) })}
+          {/* Not wrapped in <label>: the dropdown rows would forward clicks to the input. */}
+          <div className="field">
+            <span className="field__label">Category</span>
+            <Combobox
+              noun="category"
+              options={categories}
+              value={f.category}
+              onChange={(category) => setF((prev) => ({ ...prev, category }))}
+              onCreate={(name) => dispatch({ type: 'addOption', list: 'categories', name })}
+              invalid={Boolean(errors.category)}
+            />
+            {errors.category && <span className="field__error">{errors.category}</span>}
+          </div>
+          <div className="field">
+            <span className="field__label">Supplier / vendor</span>
+            <Combobox
+              noun="supplier"
+              options={suppliers}
+              value={f.supplier}
+              onChange={(supplier) => setF((prev) => ({ ...prev, supplier }))}
+              onCreate={(name) => dispatch({ type: 'addOption', list: 'suppliers', name })}
+            />
+          </div>
         </div>
         <div className="form__row form__row--3">
           {Field({ k: 'stock', label: 'Quantity in stock', children: <input className={`input${errors.stock ? ' input--error' : ''}`} type="number" min="0" value={f.stock} onChange={set('stock')} /> })}

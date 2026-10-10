@@ -3,11 +3,11 @@ import { Receipt, ChevronLeft, ChevronRight, CalendarDays, Search, Check, Minus,
 import Modal from './Modal';
 import { useStore, dayTotals } from '../store/AppStore';
 import { useToast } from '../store/Toast';
-import { TODAY, CATEGORIES } from '../data/mockData';
+import { TODAY } from '../data/mockData';
 import { addDays, dayLabel, dayNum, dayShort, rm, rm2, weekStart } from '../lib/format';
 
 export default function DailySalesModal({ onClose, initialDate = TODAY }) {
-  const { products, productsById, sales, dispatch } = useStore();
+  const { products, productsById, sales, categories, dispatch } = useStore();
   const toast = useToast();
   const dateInput = useRef(null);
 
@@ -47,7 +47,9 @@ export default function DailySalesModal({ onClose, initialDate = TODAY }) {
       .filter((p) => !onlySold || (draft[p.id] || 0) > 0);
   }, [products, query, onlySold, draft]);
 
-  const groups = [...CATEGORIES].reverse().map((c) => ({ category: c, items: sellable.filter((p) => p.category === c).sort((a, b) => a.name.localeCompare(b.name)) }))
+  // Baked goods first (they are what gets sold), then the rest in saved order.
+  const order = ['Baked goods', ...categories.filter((c) => c !== 'Baked goods')];
+  const groups = order.map((c) => ({ category: c, items: sellable.filter((p) => p.category === c).sort((a, b) => a.name.localeCompare(b.name)) }))
     .filter((g) => g.items.length);
 
   const totals = dayTotals(draft, productsById);
