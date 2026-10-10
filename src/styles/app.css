@@ -476,3 +476,15 @@ td.center .cell-sub { justify-content: center; }
 .recent--pinned { margin-bottom: 6px; }
 .recent--pinned::after { content: ''; position: absolute; left: 10px; right: 10px; bottom: -4px; border-bottom: 1px solid var(--border); }
 .recent__pin { color: var(--light); margin-right: 10px; flex-shrink: 0; transform: rotate(30deg); }
+
+/* Today's advice (pinned chat in AI Advisor) */
+.advice-list { display: flex; flex-direction: column; gap: 12px; max-width: 480px; margin-left: 44px; margin-top: -12px; }
+.advice-list .rec-card { margin-left: 0; }
+.advice-list .rec-card p { flex: 1; }
+.recent--pinned-top { margin-bottom: 2px; }
+@media (max-width: 640px) { .advice-list { margin-left: 0; } }
+
+/* Dashboard conversation shown in AI Advisor — same look as the Dashboard panel */
+.dash-thread { display: flex; flex-direction: column; gap: 14px; }
+.dash-thread .rec-card { max-width: 420px; }
+.dash-thread .bubble--ai { max-width: min(85%, 560px); }

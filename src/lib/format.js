@@ -66,3 +66,6 @@ export function downloadCSV(filename, rows) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+// The real calendar day on this device (the demo data stays pinned to TODAY).
+export const localToday = () => toISO(new Date());

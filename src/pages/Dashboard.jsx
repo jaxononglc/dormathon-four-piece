@@ -1,20 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Box, AlertTriangle, Receipt, LineChart, Sparkles, ArrowRight, CheckCircle2, RotateCcw } from 'lucide-react';
+import { Box, AlertTriangle, Receipt, LineChart, Sparkles, ArrowRight, RotateCcw } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
 import { BarChart } from '../components/Charts';
 import DailySalesModal from '../components/DailySalesModal';
-import { useStore, suggestedQty, stockStatus } from '../store/AppStore';
+import DashboardThread from '../components/DashboardThread';
+import { useStore } from '../store/AppStore';
 import { TODAY, SHOP, SUNDAY_FORECAST, LAST_WEEK, ANALYSIS } from '../data/mockData';
-import { addDays, dayShort, longDate, rm, rm2, signedPct } from '../lib/format';
+import { addDays, dayShort, longDate, rm, signedPct } from '../lib/format';
 import { getAiReply, chatMessage } from '../lib/aiReply';
+import { buildAdvice } from '../lib/advice';
 
 const WEEK_START = '2026-10-05'; // Monday of the current week
-const STARTERS = ['Should I stock up for Deepavali?', 'Why are sales up?', 'Which items lose money?'];
 
 export default function Dashboard() {
   const store = useStore();
-  const { products, productsById, sales, reorder, lowCount, outCount, stockValue, salesFor, dismissedRecs, dashboardChat, typingChatId, dispatch } = store;
+  const { products, productsById, sales, lowCount, outCount, stockValue, salesFor, dashboardChat, typingChatId, dispatch } = store;
   const storeRef = useRef(store);
   storeRef.current = store;
   const [draft, setDraft] = useState('');
@@ -60,10 +61,8 @@ export default function Dashboard() {
       ? `Saturday sales are ${Math.round((todaySales / weekdayAvg - 1) * 100)}% above your weekday average.`
       : 'Revenue has grown 4 weeks out of the last 5 — weekend orders are driving it.';
 
-  // Most urgent restock: lowest stock vs minimum, among items bought from suppliers.
-  const rec = [...reorder]
-    .filter((p) => p.supplier !== 'Own kitchen' && !dismissedRecs.includes(p.id))
-    .sort((a, b) => a.stock / a.min - b.stock / b.min)[0];
+  // Most urgent suggestion; the full list is in AI Advisor → Today's advice.
+  const rec = buildAdvice(store)[0];
 
   // The panel keeps one running conversation (store.dashboardChat), so it is still
   // here after visiting other pages, and a reply that lands meanwhile is kept.
@@ -152,53 +151,13 @@ export default function Dashboard() {
           )}
         </div>
         <div className="ai-panel__body" ref={bodyRef}>
-          <div className="msg msg--ai">
-            <div className="ai-avatar"><Sparkles size={13} /></div>
-            <div className="bubble bubble--ai">Good morning, {SHOP.owner}! I checked last night’s sales and your stock. Here’s what I’d do today:</div>
-          </div>
-          {rec ? (
-            <div className="rec-card">
-              <span className={`tag ${stockStatus(rec) === 'out' ? 'tag--red' : 'tag--amber'}`}>
-                <AlertTriangle size={12} />{stockStatus(rec) === 'out' ? 'Out of stock' : 'Urgent'}
-              </span>
-              <div className="strong">Reorder {rec.name} today</div>
-              <p className="small">
-                {rec.stock === 0 ? `You’ve run out of ${rec.name}.` : `Only ${rec.stock} ${rec.unit} left — your minimum is ${rec.min} ${rec.unit}.`} Order {suggestedQty(rec)} {rec.unit} from {rec.supplier} (≈ {rm2(suggestedQty(rec) * rec.cost)}) so you don’t run out.
-              </p>
-              <div className="row gap-8">
-                <button className="btn btn--primary btn--xs" onClick={() => ask(`Draft a WhatsApp order to ${rec.supplier} for ${suggestedQty(rec)} ${rec.unit} of ${rec.name}`)}>Draft order</button>
-                <button className="btn btn--ghost btn--xs" onClick={() => dispatch({ type: 'dismissRec', id: rec.id })}>Not now</button>
-              </div>
-            </div>
-          ) : (
-            <div className="rec-card">
-              <span className="tag tag--green"><CheckCircle2 size={12} />All good</span>
-              <p className="small">Nothing urgent to reorder right now.</p>
-            </div>
-          )}
-          {dashboardChat.map((m) =>
-            m.role === 'user' ? (
-              <div key={m.id} className="msg msg--user"><div className="bubble bubble--user">{m.text}</div></div>
-            ) : (
-              <div key={m.id} className="msg msg--ai">
-                <div className="ai-avatar"><Sparkles size={13} /></div>
-                <div className="bubble bubble--ai pre">{m.text}</div>
-              </div>
-            )
-          )}
-          {typing && (
-            <div className="msg msg--ai">
-              <div className="ai-avatar"><Sparkles size={13} /></div>
-              <div className="typing"><i /><i /><i /></div>
-            </div>
-          )}
-          {dashboardChat.length === 0 && (
-            <div className="chips chips--indent">
-              {STARTERS.map((c) => (
-                <button key={c} className="chip-btn" onClick={() => ask(c)}>{c}</button>
-              ))}
-            </div>
-          )}
+          <DashboardThread
+            messages={dashboardChat}
+            rec={rec || null}
+            typing={typing}
+            onAsk={ask}
+            onDismiss={(a) => dispatch({ type: 'dismissRec', id: a.id })}
+          />
         </div>
         <form
           className="ai-panel__composer"

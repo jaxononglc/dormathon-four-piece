@@ -4,7 +4,7 @@ import { useToast } from '../store/Toast';
 import { SHOP } from '../data/mockData';
 
 export default function Settings() {
-  const { dispatch } = useStore();
+  const { dispatch, backend, aiEnabled, syncError } = useStore();
   const toast = useToast();
   return (
     <div className="page">
@@ -23,10 +23,25 @@ export default function Settings() {
           </div>
         </div>
         <hr />
+        <div>
+          <h3>Data</h3>
+          <p className="muted small">
+            {backend === 'online' ? 'Connected to the database — changes are saved for everyone.'
+              : backend === 'connecting' ? 'Connecting to the database…'
+              : 'Database not reachable — changes are saved in this browser only.'}
+            {' '}AI Advisor: {aiEnabled ? 'Gemini' : 'offline demo answers'}.
+          </p>
+          {syncError && <p className="small" style={{ color: 'var(--red)' }}>Last save failed ({syncError}). Reload the page to see what was saved.</p>}
+        </div>
+        <hr />
         <div className="split">
           <div>
             <h3>Reset demo data</h3>
-            <p className="muted small">This app has no backend. Your changes are saved in this browser only. Reset to bring back the original mock data.</p>
+            <p className="muted small">
+              {backend === 'online'
+                ? 'Wipes the shared database and loads the original mock data again. Everyone using this database sees the reset.'
+                : 'Your changes are saved in this browser only. Reset to bring back the original mock data.'}
+            </p>
           </div>
           <button
             className="btn btn--outline"

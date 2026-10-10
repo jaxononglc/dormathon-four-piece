@@ -1,18 +1,10 @@
-// Gemini client for the AI Advisor.
-//
-// ⚠️ There is no backend, so the API key is bundled into the front end and anyone
-// who opens the site can read it in DevTools. Fine for local demos; before
-// deploying publicly, move this call behind a small server/serverless function.
-// TODO(backend): POST /api/advisor { messages } and keep the key on the server.
+// Gemini for the AI Advisor. The request is built here (with live store data) and
+// sent through POST /api/ai, which adds the API key on the server (server/api.js),
+// so the key never reaches the browser.
 import { stockStatus, suggestedQty } from '../store/AppStore';
 import { SHOP, TODAY, UPCOMING, MARGIN_TARGET } from '../data/mockData';
 import { addDays, dayShort } from './format';
-
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const MODEL = import.meta.env.VITE_GEMINI_MODEL || 'gemini-3.8-flash';
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
-
-export const geminiEnabled = Boolean(API_KEY);
+import { api } from './api';
 
 // A compact snapshot of the live store so answers match what the app shows.
 function shopContext(store) {
@@ -49,8 +41,6 @@ ${rows}`;
  * @returns {Promise<string>}
  */
 export async function askGemini(history, store) {
-  if (!API_KEY) throw new Error('Missing VITE_GEMINI_API_KEY');
-
   // Gemini expects alternating user/model turns starting with the user.
   const contents = history
     .filter((m) => m.text)
@@ -58,23 +48,6 @@ export async function askGemini(history, store) {
     .slice(-12); // keep requests small
   while (contents.length && contents[0].role !== 'user') contents.shift();
 
-  const res = await fetch(ENDPOINT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': API_KEY },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: shopContext(store) }] },
-      contents,
-      generationConfig: { temperature: 0.4, maxOutputTokens: 2048 },
-    }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error?.message || `Gemini error ${res.status}`);
-
-  const text = (data.candidates?.[0]?.content?.parts || [])
-    .filter((p) => p.text && !p.thought)
-    .map((p) => p.text)
-    .join('')
-    .trim();
-  if (!text) throw new Error('Gemini returned an empty answer');
+  const { text } = await api('POST', '/ai', { system: shopContext(store), contents });
   return text;
 }

@@ -1,13 +1,16 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  Sparkles, Box, ArrowRight, Database, LineChart, CalendarDays, Paperclip, Upload, Mic, MessageSquare, Trash2, Plus, LayoutGrid, Pin,
+  Sparkles, Box, ArrowRight, Database, LineChart, CalendarDays, Paperclip, Upload, Mic, MessageSquare, Trash2, Plus, LayoutGrid, Pin, Lightbulb, RotateCcw,
 } from 'lucide-react';
+import AdviceCard from '../components/AdviceCard';
 import { useStore } from '../store/AppStore';
 import { useToast } from '../store/Toast';
-import { geminiEnabled } from '../lib/gemini';
 import { getAiReply, chatMessage } from '../lib/aiReply';
+import { buildAdvice } from '../lib/advice';
 import { SHOP } from '../data/mockData';
+import { dayLabel } from '../lib/format';
+import DashboardThread from '../components/DashboardThread';
 
 const GREETING = { id: 'greeting', role: 'ai', text: `Hi ${SHOP.owner}! Ask me anything about your stock, sales or plans.` };
 const STARTERS = ['What is low on stock?', 'Which items have the lowest margin?', 'Should I stock up for Deepavali?', 'Why are sales up this week?'];
@@ -45,17 +48,21 @@ export default function Advisor() {
   const storeRef = useRef(store);
   storeRef.current = store;
 
-  const { dashboardChat } = store;
-  // The Dashboard panel's conversation is pinned first in the history and can be
-  // continued here; messages sent while it is open go back to the Dashboard.
-  const dashboard = {
-    id: 'dashboard',
-    title: 'Dashboard',
-    messages: dashboardChat,
-    updatedAt: dashboardChat[dashboardChat.length - 1]?.at,
+  const { dashboardChat, dashboardDate, adviceChat } = store;
+  // Two pinned chats sit above the history:
+  // - Dashboard (top): today's Dashboard panel conversation, continued here; messages sent
+  //   while it is open go back to the Dashboard. Past days move into the history
+  //   (kind: 'dashboard') and the pin starts the new day.
+  // - Today’s advice: the full list of suggestions (the Dashboard shows only the top one),
+  //   with follow-up questions kept in store.adviceChat.
+  const pinned = {
+    dashboard: { id: 'dashboard', kind: 'dashboard', title: `Dashboard · ${dayLabel(dashboardDate)}`, messages: dashboardChat, updatedAt: dashboardChat[dashboardChat.length - 1]?.at },
+    advice: { id: 'advice', kind: 'advice', title: 'Today’s advice', messages: adviceChat, updatedAt: adviceChat[adviceChat.length - 1]?.at },
   };
-  const chat = activeChatId === 'dashboard' ? dashboard : chats.find((c) => c.id === activeChatId) || null;
-  const messages = [GREETING, ...(chat?.messages || [])];
+  const advice = buildAdvice(store);
+  const chat = pinned[activeChatId] || chats.find((c) => c.id === activeChatId) || null;
+  const isDashboard = chat?.kind === 'dashboard';
+  const messages = [...(chat?.kind === 'advice' ? [] : [GREETING]), ...(chat?.messages || [])];
   const typing = Boolean(chat) && typingChatId === chat.id;
   const history = [...chats].sort((a, b) => b.updatedAt - a.updatedAt);
 
@@ -100,6 +107,7 @@ export default function Advisor() {
     const chatId = ensureChat(t, fresh);
     const prior = fresh ? []
       : chatId === 'dashboard' ? storeRef.current.dashboardChat
+      : chatId === 'advice' ? storeRef.current.adviceChat
       : storeRef.current.chats.find((c) => c.id === chatId)?.messages || [];
     const userMsg = chatMessage('user', t);
     dispatch({ type: 'addMessage', chatId, message: userMsg });
@@ -127,7 +135,7 @@ export default function Advisor() {
             <div className="ai-avatar ai-avatar--lg"><Sparkles size={20} /></div>
             <div>
               <div className="strong big">{chat ? chat.title : 'Bijak Advisor'}</div>
-              <div className="online"><i />{geminiEnabled ? 'Gemini' : 'Offline demo'} · using {SHOP.name}’s sales &amp; stock data</div>
+              <div className="online"><i />{store.aiEnabled ? 'Gemini' : 'Offline demo'} · using {SHOP.name}’s sales &amp; stock data</div>
             </div>
           </div>
           <div className="row gap-8">
@@ -137,7 +145,37 @@ export default function Advisor() {
 
         <div className="chat__scroll" ref={scrollRef}>
           <div className="chat__column">
-            {messages.map((m) =>
+            {chat?.id === 'advice' && (
+              <>
+                <div className="msg msg--ai msg--wide">
+                  <div className="ai-avatar ai-avatar--md"><Sparkles size={16} /></div>
+                  <div className="ai-answer"><p>Good morning, {SHOP.owner}! I checked last night’s sales and your stock. Here’s what I’d do today:</p></div>
+                </div>
+                <div className="advice-list">
+                  {(advice.length ? advice : [null]).map((a) => (
+                    <AdviceCard
+                      key={a?.id || 'none'}
+                      item={a}
+                      disabled={typing}
+                      onAction={(item) => send(item.ask)}
+                      onDismiss={(item) => dispatch({ type: 'dismissRec', id: item.id })}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+            {isDashboard && (
+              <div className="dash-thread">
+                <DashboardThread
+                  messages={chat.messages}
+                  rec={chat.id === 'dashboard' ? advice[0] || null : undefined}
+                  typing={typing}
+                  onAsk={(q) => send(q)}
+                  onDismiss={(a) => dispatch({ type: 'dismissRec', id: a.id })}
+                />
+              </div>
+            )}
+            {!isDashboard && messages.map((m) =>
               m.role === 'user' ? (
                 <div key={m.id} className="msg msg--user"><div className="bubble bubble--user">{m.text}</div></div>
               ) : (
@@ -154,7 +192,7 @@ export default function Advisor() {
                 ))}
               </div>
             )}
-            {typing && (
+            {typing && !isDashboard && (
               <div className="msg msg--ai msg--wide">
                 <div className="ai-avatar ai-avatar--md"><Sparkles size={16} /></div>
                 <div className="typing"><i /><i /><i /></div>
@@ -218,23 +256,48 @@ export default function Advisor() {
             <button className="icon-btn icon-btn--sm" onClick={() => dispatch({ type: 'openChat', id: null })} aria-label="New chat" title="New chat"><Plus size={15} /></button>
           </div>
           <div className="history-list">
-            <div className={`recent recent--pinned${activeChatId === 'dashboard' ? ' recent--active' : ''}`}>
+            <div className={`recent recent--pinned-top${activeChatId === 'dashboard' ? ' recent--active' : ''}`}>
               <button className="recent__open" onClick={() => dispatch({ type: 'openChat', id: 'dashboard' })}>
                 <LayoutGrid size={15} />
                 <div>
-                  <div className="cell-title">Dashboard</div>
+                  <div className="cell-title">Dashboard · {dayLabel(dashboardDate)}</div>
                   <div className="cell-sub">
                     {typingChatId === 'dashboard' ? 'Bijak is typing…'
-                      : dashboardChat.length ? `${whenLabel(dashboard.updatedAt)} · ${dashboardChat.length} messages` : 'Chat from the Dashboard panel'}
+                      : dashboardChat.length ? `${whenLabel(pinned.dashboard.updatedAt)} · ${dashboardChat.length} messages` : 'Today · no messages yet'}
                   </div>
                 </div>
               </button>
               <Pin size={13} className="recent__pin" aria-label="Pinned" />
             </div>
+            <div className={`recent recent--pinned${activeChatId === 'advice' ? ' recent--active' : ''}`}>
+              <button className="recent__open" onClick={() => dispatch({ type: 'openChat', id: 'advice' })}>
+                <Lightbulb size={15} />
+                <div>
+                  <div className="cell-title">Today’s advice</div>
+                  <div className="cell-sub">
+                    {typingChatId === 'advice' ? 'Bijak is typing…'
+                      : advice.length ? `${advice.length} suggestion${advice.length === 1 ? '' : 's'} for today` : 'Nothing urgent today'}
+                  </div>
+                </div>
+              </button>
+              {activeChatId === 'advice' && (adviceChat.length > 0 || store.dismissedRecs.length > 0) ? (
+                <button
+                  className="icon-btn icon-btn--sm recent__delete"
+                  aria-label="Reset today’s advice"
+                  title="Clear follow-ups and show dismissed suggestions again"
+                  disabled={typing}
+                  onClick={() => dispatch({ type: 'clearAdviceChat' })}
+                >
+                  <RotateCcw size={14} />
+                </button>
+              ) : (
+                <Pin size={13} className="recent__pin" aria-label="Pinned" />
+              )}
+            </div>
             {history.map((c) => (
               <div key={c.id} className={`recent${c.id === activeChatId ? ' recent--active' : ''}`}>
                 <button className="recent__open" onClick={() => dispatch({ type: 'openChat', id: c.id })}>
-                  <MessageSquare size={15} />
+                  {c.kind === 'dashboard' ? <LayoutGrid size={15} /> : <MessageSquare size={15} />}
                   <div>
                     <div className="cell-title">{c.title}</div>
                     <div className="cell-sub">{typingChatId === c.id ? 'Bijak is typing…' : `${whenLabel(c.updatedAt)} · ${c.messages.length} messages`}</div>

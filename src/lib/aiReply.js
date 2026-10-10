@@ -1,7 +1,7 @@
 // One place that turns a chat history into an AI answer, used by both the
 // AI Advisor page and the Dashboard panel.
 import { advisorReply } from './advisor';
-import { askGemini, geminiEnabled } from './gemini';
+import { askGemini } from './gemini';
 
 /**
  * @param {{role: 'user'|'ai', text: string}[]} history  oldest first; last item is the new question
@@ -12,7 +12,7 @@ export async function getAiReply(history, store) {
   const question = history[history.length - 1]?.text || '';
   // Keyword-based answers are the offline fallback (no key, no network, quota hit…).
   const local = advisorReply(question, store).text;
-  if (!geminiEnabled) {
+  if (!store.aiEnabled) {
     await new Promise((r) => setTimeout(r, 600));
     return local;
   }

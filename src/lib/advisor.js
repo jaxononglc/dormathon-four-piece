@@ -2,11 +2,31 @@
 // so replies stay consistent with what the rest of the app shows.
 import { stockStatus, suggestedQty } from '../store/AppStore';
 import { rm, rm2 } from './format';
+import { SHOP } from '../data/mockData';
 
 export function advisorReply(text, store) {
   const q = text.toLowerCase();
   const { reorder, products, salesFor } = store;
 
+  // Buttons on the advice cards (lib/advice.js).
+  const order = text.match(/draft a whatsapp order to (.+) for (\d+) (\S+) of (.+)$/i);
+  if (order) {
+    const [, supplier, qty, unit, item] = order;
+    return { type: 'text', text: `Here’s a draft for ${supplier}:\n\n“Salam, ini Ros dari ${SHOP.name}. Saya nak order ${qty} ${unit} ${item}. Boleh hantar esok? Terima kasih!”\n\nCopy it into WhatsApp — sending is not connected in this demo.` };
+  }
+  const promo = text.match(/write a whatsapp promo for (.+) at 20% off/i);
+  if (promo) {
+    const p = products.find((x) => x.name === promo[1]);
+    return { type: 'text', text: `“🎉 Promo hujung minggu! ${promo[1]}${p?.price ? ` kini ${rm2(p.price * 0.8)} sahaja (biasa ${rm2(p.price)})` : ' 20% off'}. Stok terhad — WhatsApp kami untuk tempah!”\n\nPost it to your status or customer groups.` };
+  }
+  const bake = text.match(/how many (.+) should i bake/i);
+  if (bake) {
+    const p = products.find((x) => x.name === bake[1]);
+    return { type: 'text', text: p ? `Bake ${suggestedQty(p)} ${p.unit} of ${p.name}. That brings you to twice your minimum (${p.min} ${p.unit}), which covers a busy Sunday.` : 'Bake enough to get back to twice your minimum level.' };
+  }
+  if (/(deepavali|festival)/.test(q)) {
+    return { type: 'text', text: 'Deepavali is on 8 Nov. Orders usually jump in the 2 weeks before festivals, so restock flour, butter, sugar and cake boxes by 25 Oct. Connect Gemini for a detailed plan.' };
+  }
   if (/(budget|money to spend|only have)/.test(q)) {
     return { type: 'text', text: 'Start with the items that are out of stock, then the low ones. Ask “What is low on stock?” to see the list with costs.' };
   }
@@ -63,7 +83,7 @@ export function advisorReply(text, store) {
       text: `${reorder.length} items need restocking:\n${list}\nRestocking all of them costs about ${rm2(cost)}. Ask me to “message my suppliers” and I’ll draft the orders.`,
     };
   }
-  if (/(deepavali|festival|plan)/.test(q)) {
+  if (/plan/.test(q)) {
     return { type: 'text', text: 'Deepavali is on 8 Nov. Orders usually jump in the 2 weeks before festivals, so restock flour, butter, sugar and cake boxes by 25 Oct. Connect Gemini for a detailed plan.' };
   }
   return {

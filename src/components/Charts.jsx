@@ -80,8 +80,9 @@ export function LineChart({ labels, current, previous, height = 250 }) {
   const y = (v) => pad.t + innerH - ((v - lo) / (hi - lo)) * innerH;
   const path = (vals) => vals.map((v, i) => `${i ? 'L' : 'M'}${x(i)},${y(v)}`).join(' ');
   const area = `${path(current)} L${x(current.length - 1)},${y(lo)} L${x(0)},${y(lo)} Z`;
-  const active = hover ?? current.length - 1;
-  const change = previous[active] ? current[active] / previous[active] - 1 : 0;
+  // Tooltip and guide line only while hovering a point.
+  const active = hover;
+  const change = active != null && previous[active] ? current[active] / previous[active] - 1 : 0;
 
   return (
     <div className="chart">
@@ -101,7 +102,7 @@ export function LineChart({ labels, current, previous, height = 250 }) {
         <path d={area} fill="url(#areaFill)" />
         <path d={path(previous)} className="line line--prev" />
         <path d={path(current)} className="line line--current" />
-        <line x1={x(active)} x2={x(active)} y1={pad.t} y2={y(lo)} className="guide" />
+        {active != null && <line x1={x(active)} x2={x(active)} y1={pad.t} y2={y(lo)} className="guide" />}
         {current.map((v, i) => (
           <g key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
             <rect x={x(i) - innerW / labels.length / 2} y={0} width={innerW / labels.length} height={height} fill="transparent" />
@@ -110,18 +111,20 @@ export function LineChart({ labels, current, previous, height = 250 }) {
           </g>
         ))}
       </svg>
-      <div
-        className={`chart-tip chart-tip--rich${x(active) / W > 0.85 ? " chart-tip--end" : x(active) / W < 0.15 ? " chart-tip--start" : ""}`}
-        style={{ left: `${(x(active) / W) * 100}%`, top: `${(y(current[active]) / height) * 100}%` }}
-      >
-        <span className="chart-tip__label">{labels[active]}</span>
-        <b>{rm(current[active])}</b>
-        {previous[active] > 0 && (
-          <span className={change >= 0 ? 'chart-tip__up' : 'chart-tip__down'}>
-            {change >= 0 ? '+' : '−'}{Math.abs(change * 100).toFixed(0)}% vs previous
-          </span>
-        )}
-      </div>
+      {active != null && (
+        <div
+          className={`chart-tip chart-tip--rich${x(active) / W > 0.85 ? " chart-tip--end" : x(active) / W < 0.15 ? " chart-tip--start" : ""}`}
+          style={{ left: `${(x(active) / W) * 100}%`, top: `${(y(current[active]) / height) * 100}%` }}
+        >
+          <span className="chart-tip__label">{labels[active]}</span>
+          <b>{rm(current[active])}</b>
+          {previous[active] > 0 && (
+            <span className={change >= 0 ? 'chart-tip__up' : 'chart-tip__down'}>
+              {change >= 0 ? '+' : '−'}{Math.abs(change * 100).toFixed(0)}% vs previous
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
