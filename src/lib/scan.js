@@ -44,7 +44,7 @@ async function compress(file) {
  * @param {File} file  image picked or taken with the camera
  * @param {object[]} products  products the record can mention
  * @param {string} today  yyyy-mm-dd
- * @returns {Promise<{date: string|null, items: {productId: string, rawText: string, units: number, confidence: number}[], unmatched: string[]}>}
+ * @returns {Promise<{date: string|null, items: {productId: string, rawText: string, units: number, damaged: number, confidence: number}[], unmatched: string[]}>}
  */
 export async function scanSalesRecord(file, products, today) {
   if (!file.type.startsWith('image/') && !heicType(file)) throw new Error('Please choose a photo');

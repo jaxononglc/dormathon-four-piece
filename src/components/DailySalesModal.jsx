@@ -6,6 +6,8 @@ import { useToast } from '../store/Toast';
 import { addDays, dayLabel, dayNum, dayShort, localToday, parseISO, rm, rm2 } from '../lib/format';
 import { scanSalesRecord, SURE } from '../lib/scan';
 
+// A scanned row is highlighted when the AI was unsure, or the paper wants more than the stock has.
+const needsCheck = (m) => m.confidence < SURE || m.units < m.wanted || m.damaged < m.wantedDam;
 const nonZero = (lines) => Object.fromEntries(Object.entries(lines).filter(([, u]) => u > 0));
 const same = (a, b) => JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
 
@@ -106,27 +108,31 @@ export default function DailySalesModal({ onClose, initialDate = localToday() })
   const groups = order.map((c) => ({ category: c, items: sellable.filter((p) => p.category === c).sort((a, b) => a.name.localeCompare(b.name)) }))
     .filter((g) => g.items.length);
 
-  // Fill the table from a scan, starting from 0. On a day that is already saved the
-  // paper replaces its record (edit mode). Nothing is saved until the user presses Save.
+  // Fill the Units sold and Damaged boxes from a scan, starting from 0. On a day that is
+  // already saved, the paper replaces that day's record (edit mode). Nothing is saved
+  // until the user presses Save.
   function applyScan(result, photo, forDate) {
     const existing = salesRecords.find((r) => r.date === forDate) || null;
-    const dam = damage[forDate] || {};
+    const oldDam = damage[forDate] || {};
     const own = existing?.lines || {};
-    // The paper only has sales; the day's damaged goods stay as they are.
-    setEditingDay(Boolean(existing) || Object.keys(dam).length > 0);
-    setDamDraft({ ...dam });
+    setEditingDay(Boolean(existing) || Object.keys(oldDam).length > 0);
     const next = {};
+    const nextDam = {};
     const marks = {};
     for (const it of result.items) {
       const p = productsById[it.productId];
       if (!p || p.price == null) continue;
-      const units = Math.min(it.units, p.stock + (own[p.id] || 0));
-      // (damaged units of a saved day are already out of stock, so p.stock is the right limit)
+      // What is on the shelf for that day: the stock now plus what that day already took out.
+      const avail = p.stock + (own[p.id] || 0) + (oldDam[p.id] || 0);
+      const units = Math.min(it.units, avail);
+      const damaged = Math.min(it.damaged || 0, avail - units); // sold + damaged can't exceed what there is
       next[p.id] = units;
-      marks[p.id] = { rawText: it.rawText, confidence: it.confidence, wanted: it.units, units };
+      nextDam[p.id] = damaged;
+      marks[p.id] = { rawText: it.rawText, confidence: it.confidence, wanted: it.units, units, wantedDam: it.damaged || 0, damaged, avail };
     }
     setDate(forDate);
     setDraft(next);
+    setDamDraft(nextDam);
     setScan({ result, photo, marks });
     setQuery('');
     setOnlySold(Object.keys(marks).length > 0);
@@ -141,7 +147,8 @@ export default function DailySalesModal({ onClose, initialDate = localToday() })
       const result = await scanSalesRecord(file, products.filter((p) => p.price != null), localToday());
       applyScan(result, URL.createObjectURL(file), date);
       const n = result.items.length;
-      toast(n ? `Read ${n} product${n === 1 ? '' : 's'} from the photo. Check them, then save` : 'No sales found in the photo');
+      const dmg = result.items.filter((i) => i.damaged > 0).length;
+      toast(n ? `Read ${n} product${n === 1 ? '' : 's'}${dmg ? ` (${dmg} with damaged goods)` : ''} from the photo. Check them, then save` : 'No sales found in the photo');
     } catch (err) {
       toast(`Could not read the photo: ${err.message}`);
     } finally {
@@ -392,7 +399,7 @@ export default function DailySalesModal({ onClose, initialDate = localToday() })
 function ScanNote({ scan, date, savedSales, onMoveDate, onClose }) {
   const { result, photo, marks } = scan;
   const filled = Object.keys(marks).length;
-  const toCheck = Object.values(marks).filter((m) => m.confidence < SURE || m.units < m.wanted).length;
+  const toCheck = Object.values(marks).filter(needsCheck).length;
   const otherDay = result.date && result.date !== date && result.date <= localToday() ? result.date : null;
   // Desktop Chrome cannot show HEIC, so fall back to an icon.
   const [noPreview, setNoPreview] = useState(false);
@@ -440,7 +447,7 @@ function GroupRows({ group, draft, damaged, locked, available, setUnits, setDama
         const avail = available(p);
         const left = avail - units - dmg; // what neither box can take any more of
         const mark = marks?.[p.id];
-        const check = mark && (mark.confidence < SURE || mark.units < mark.wanted);
+        const check = mark && needsCheck(mark);
         return (
           <tr key={p.id} className={check ? 'row--check' : units > 0 || dmg > 0 ? 'row--active' : ''}>
             <td>
@@ -449,7 +456,9 @@ function GroupRows({ group, draft, damaged, locked, available, setUnits, setDama
               {mark && (
                 <div className={`scan-read${check ? ' text-amber' : ''}`}>
                   Paper: “{mark.rawText}”
-                  {mark.units < mark.wanted ? ` · says ${mark.wanted}, only ${avail} in stock` : check ? ' · hard to read, please check' : ''}
+                  {mark.units < mark.wanted || mark.damaged < mark.wantedDam
+                    ? ` · says ${mark.wanted} sold${mark.wantedDam ? ` + ${mark.wantedDam} damaged` : ''}, only ${mark.avail} in stock`
+                    : check ? ' · hard to read, please check' : ''}
                 </div>
               )}
             </td>

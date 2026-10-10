@@ -404,10 +404,11 @@ const SCAN_SCHEMA = {
         properties: {
           productId: { type: 'STRING', description: 'id from the product list' },
           rawText: { type: 'STRING', description: 'the line exactly as written' },
-          units: { type: 'INTEGER' },
-          confidence: { type: 'NUMBER', description: '0–1: how sure you are of both the product and the number' },
+          units: { type: 'INTEGER', description: 'units sold (0 if the line only has damaged units)' },
+          damaged: { type: 'INTEGER', description: 'units damaged / broken / spoiled / rejected (0 if none)' },
+          confidence: { type: 'NUMBER', description: '0–1: how sure you are of both the product and the numbers' },
         },
-        required: ['productId', 'rawText', 'units', 'confidence'],
+        required: ['productId', 'rawText', 'units', 'damaged', 'confidence'],
       },
     },
     unmatched: { type: 'ARRAY', items: { type: 'STRING' }, description: 'lines that look like sales but match no product, as written' },
@@ -428,7 +429,9 @@ Today is ${today || 'unknown'}.
 Rules:
 - Only use productId values from this list. Match by meaning, not spelling (e.g. "choc chip ckie" → Chocolate Chip Cookie, "kek" → cake).
 - units is the number of units sold, as a whole number. If a line shows a tally (e.g. 正 or ||||), count it.
-- If the same product appears on several lines, return one item with the total.
+- damaged is the number of units that were damaged, broken, spoiled or rejected. The sheet may have a column or a note for it (e.g. "damaged", "rosak", "reject", "buang", "破", "坏", "报废"). Use 0 when none is written. A line with only a damaged number has units 0.
+- Never put damaged units into units, and never count the same number twice.
+- If the same product appears on several lines, return one item with the totals.
 - If you cannot tell which product a line is, put it in unmatched instead of guessing.
 - Lower confidence when the number or the product is hard to read.
 - Ignore prices, totals and crossed-out lines. If the page is not a sales record, return empty lists.
@@ -454,14 +457,15 @@ ${list.map((p) => `${p.id} | ${p.name} | ${p.sku} | ${p.unit}`).join('\n')}`;
   const unmatched = (out.unmatched || []).map(String).filter(Boolean);
   for (const it of out.items || []) {
     const id = String(it.productId);
-    const units = Math.floor(Number(it.units));
+    const units = Math.max(0, Math.floor(Number(it.units)) || 0);
+    const damaged = Math.max(0, Math.floor(Number(it.damaged)) || 0);
     if (!known.has(id)) { if (it.rawText) unmatched.push(String(it.rawText)); continue; }
-    if (!(units > 0)) continue;
+    if (!(units > 0 || damaged > 0)) continue;
     const confidence = Math.max(0, Math.min(1, Number(it.confidence) || 0));
     const prev = items.get(id);
     items.set(id, prev
-      ? { ...prev, units: prev.units + units, rawText: `${prev.rawText}; ${it.rawText}`, confidence: Math.min(prev.confidence, confidence) }
-      : { productId: id, rawText: String(it.rawText || ''), units, confidence });
+      ? { ...prev, units: prev.units + units, damaged: prev.damaged + damaged, rawText: `${prev.rawText}; ${it.rawText}`, confidence: Math.min(prev.confidence, confidence) }
+      : { productId: id, rawText: String(it.rawText || ''), units, damaged, confidence });
   }
   const date = /^\d{4}-\d{2}-\d{2}$/.test(out.date || '') ? out.date : null;
   return { date, items: [...items.values()], unmatched };
