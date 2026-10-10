@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Receipt, ChevronLeft, ChevronRight, CalendarDays, Search, Check, Minus, Plus, CircleDashed, CheckCircle2, Camera, Loader2, ScanText, X, Pencil, Trash2 } from 'lucide-react';
+import { Receipt, ChevronLeft, ChevronRight, CalendarDays, Search, Check, Minus, Plus, CircleDashed, CheckCircle2, Camera, Image as ImageIcon, Loader2, ScanText, X, Pencil, Trash2 } from 'lucide-react';
 import Modal from './Modal';
 import { useStore, dayTotals, newSaleId } from '../store/AppStore';
 import { useToast } from '../store/Toast';
@@ -14,9 +14,10 @@ const same = (a, b) => JSON.stringify(Object.entries(a).sort()) === JSON.stringi
 // One record per day: units sold (Sales) and damaged goods ("DamageLog"). The form
 // starts at 0; a day that is already saved shows its numbers locked until Edit.
 export default function DailySalesModal({ onClose, initialDate = localToday() }) {
-  const { products, productsById, sales, salesRecords, damage, categories, aiEnabled, dispatch } = useStore();
+  const { products, productsById, sales, salesRecords, damage, categories, dispatch } = useStore();
   const toast = useToast();
-  const photoInput = useRef(null);
+  const photoInput = useRef(null); // any photo (gallery / file picker)
+  const cameraInput = useRef(null); // opens the camera straight away on a phone
 
   const [date, setDate] = useState(initialDate);
   const [draft, setDraft] = useState({}); // units sold
@@ -27,6 +28,7 @@ export default function DailySalesModal({ onClose, initialDate = localToday() })
   // Last photo read by AI: { result, photo (object URL), marks: { [productId]: { rawText, confidence, wanted, units } } }
   const [scan, setScan] = useState(null);
   const [scanning, setScanning] = useState(false);
+  const [scanStep, setScanStep] = useState(''); // "Reading the sheet 40%" while the photo is read
 
   // Free the photo when it is replaced or the modal closes.
   const photoUrl = scan?.photo;
@@ -86,7 +88,7 @@ export default function DailySalesModal({ onClose, initialDate = localToday() })
   // Backspace on the last digit leaves 0; the next digit typed replaces it ("05" → 5).
   const clamp = (value, max) => Math.max(0, Math.min(max, Math.floor(Number(value) || 0)));
   const setUnits = (p, value) => {
-    if (locked) return;
+    if (locked || p.price == null) return; // items without a selling price cannot be sold
     setDraft((d) => ({ ...d, [p.id]: clamp(value, available(p) - (damDraft[p.id] || 0)) }));
   };
   const setDamaged = (p, value) => {
@@ -97,7 +99,9 @@ export default function DailySalesModal({ onClose, initialDate = localToday() })
   const sellable = useMemo(() => {
     const q = query.trim().toLowerCase();
     return products
-      .filter((p) => p.price != null)
+      // Everything still in stock in Inventory, plus anything already on this day's record
+      // (a product that sold out today must stay visible on today's saved record).
+      .filter((p) => p.stock > 0 || p.id in shown || p.id in shownDam)
       .filter((p) => !q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q))
       // A product stays listed once it has been touched, so clearing it to 0 doesn't hide the row.
       .filter((p) => !onlySold || p.id in shown || p.id in shownDam);
@@ -121,10 +125,10 @@ export default function DailySalesModal({ onClose, initialDate = localToday() })
     const marks = {};
     for (const it of result.items) {
       const p = productsById[it.productId];
-      if (!p || p.price == null) continue;
+      if (!p) continue;
       // What is on the shelf for that day: the stock now plus what that day already took out.
       const avail = p.stock + (own[p.id] || 0) + (oldDam[p.id] || 0);
-      const units = Math.min(it.units, avail);
+      const units = p.price == null ? 0 : Math.min(it.units, avail); // items that are not for sale can only be damaged
       const damaged = Math.min(it.damaged || 0, avail - units); // sold + damaged can't exceed what there is
       next[p.id] = units;
       nextDam[p.id] = damaged;
@@ -143,8 +147,9 @@ export default function DailySalesModal({ onClose, initialDate = localToday() })
     e.target.value = ''; // so the same photo can be picked again
     if (!file || !discardOk()) return;
     setScanning(true);
+    setScanStep('Preparing photo');
     try {
-      const result = await scanSalesRecord(file, products.filter((p) => p.price != null), localToday());
+      const result = await scanSalesRecord(file, products, localToday(), (pct, step) => setScanStep(pct ? `${step} ${pct}%` : step));
       applyScan(result, URL.createObjectURL(file), date);
       const n = result.items.length;
       const dmg = result.items.filter((i) => i.damaged > 0).length;
@@ -153,6 +158,7 @@ export default function DailySalesModal({ onClose, initialDate = localToday() })
       toast(`Could not read the photo: ${err.message}`);
     } finally {
       setScanning(false);
+      setScanStep('');
     }
   }
 
@@ -227,15 +233,21 @@ export default function DailySalesModal({ onClose, initialDate = localToday() })
       icon={<Receipt size={22} />}
       actions={
         <>
+          {/* Phone / tablet: the button opens the camera. Computer: it opens the file picker. */}
           <button
             className="btn btn--outline btn--sm"
-            onClick={() => photoInput.current?.click()}
-            disabled={!aiEnabled || scanning}
-            title={aiEnabled ? 'Take or upload a photo of a handwritten sales record' : 'Needs Gemini (GEMINI_API_KEY on the server)'}
+            onClick={() => (window.matchMedia('(pointer: coarse)').matches ? cameraInput : photoInput).current?.click()}
+            disabled={scanning}
+            title="Take a photo of your sales sheet. It is read on this device."
           >
             {scanning ? <Loader2 size={16} className="spin" /> : <Camera size={16} />}
-            <span className="hide-sm">{scanning ? 'Reading photo…' : 'Scan paper record'}</span>
+            <span className="hide-sm">{scanning ? `${scanStep || 'Reading photo'}…` : 'Scan paper record'}</span>
           </button>
+          {/* Phone only: pick a photo that is already in the gallery */}
+          <button className="btn btn--outline btn--sm scan-gallery" onClick={() => photoInput.current?.click()} disabled={scanning} title="Choose a photo from your gallery" aria-label="Choose a photo from your gallery">
+            <ImageIcon size={16} />
+          </button>
+          <input ref={cameraInput} type="file" accept="image/*" capture="environment" className="visually-hidden" onChange={onPhoto} tabIndex={-1} />
           <input ref={photoInput} type="file" accept="image/*,.heic,.heif" className="visually-hidden" onChange={onPhoto} tabIndex={-1} />
         </>
       }
@@ -383,7 +395,7 @@ export default function DailySalesModal({ onClose, initialDate = localToday() })
             </thead>
             <tbody>
               {groups.length === 0 && (
-                <tr><td colSpan={6} className="empty">No products match.</td></tr>
+                <tr><td colSpan={6} className="empty">No products in stock match.</td></tr>
               )}
               {groups.map((g) => (
                 <GroupRows key={g.category} group={g} draft={shown} damaged={shownDam} locked={locked} available={available} setUnits={setUnits} setDamaged={setDamaged} marks={scan?.marks} />
@@ -463,13 +475,14 @@ function GroupRows({ group, draft, damaged, locked, available, setUnits, setDama
               )}
             </td>
             <td className="center" data-label="Units sold">
-              <Stepper value={units} max={units + left} locked={locked} disabled={avail === 0} onChange={(v) => setUnits(p, v)} label={`Units of ${p.name} sold`} />
+              {/* Ingredients and packaging without a selling price can be damaged, but not sold */}
+              <Stepper value={units} max={units + left} locked={locked} disabled={avail === 0 || p.price == null} onChange={(v) => setUnits(p, v)} label={`Units of ${p.name} sold`} />
             </td>
             <td className="center" data-label="Damaged">
               <Stepper value={dmg} max={dmg + left} locked={locked} disabled={avail === 0} onChange={(v) => setDamaged(p, v)} label={`Units of ${p.name} damaged`} tone="damage" />
             </td>
-            <td className="right muted" data-label="Price each">{rm2(p.price)}</td>
-            <td className="right" data-label="Sales">{units > 0 ? <b>{rm2(units * p.price)}</b> : <span className="dash">—</span>}</td>
+            <td className="right muted" data-label="Price each">{p.price != null ? rm2(p.price) : 'Not for sale'}</td>
+            <td className="right" data-label="Sales">{units > 0 && p.price != null ? <b>{rm2(units * p.price)}</b> : <span className="dash">—</span>}</td>
             {/* A saved (locked) day's units are already out of stock. */}
             <td data-label="Stock after" className={`right ${units > 0 || dmg > 0 ? 'strong' : 'muted'}`}>{locked ? avail : left}</td>
           </tr>

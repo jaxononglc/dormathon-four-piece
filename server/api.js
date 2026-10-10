@@ -389,88 +389,6 @@ Forecast these dates: ${days.map((d) => `${d} (${weekday(d)})`).join(', ')}`;
   return result;
 }
 
-// ---- Scan a photo of a handwritten sales record ----
-// The photo is resized in the browser (src/lib/scan.js), so it stays well under this.
-// HEIC that the browser cannot decode is sent as is (Gemini reads HEIC/HEIF itself).
-const MAX_IMAGE_CHARS = 4_000_000; // base64 ≈ 3 MB
-const SCAN_SCHEMA = {
-  type: 'OBJECT',
-  properties: {
-    date: { type: 'STRING', nullable: true, description: 'Date written on the record as yyyy-mm-dd, or null if none' },
-    items: {
-      type: 'ARRAY',
-      items: {
-        type: 'OBJECT',
-        properties: {
-          productId: { type: 'STRING', description: 'id from the product list' },
-          rawText: { type: 'STRING', description: 'the line exactly as written' },
-          units: { type: 'INTEGER', description: 'units sold (0 if the line only has damaged units)' },
-          damaged: { type: 'INTEGER', description: 'units damaged / broken / spoiled / rejected (0 if none)' },
-          confidence: { type: 'NUMBER', description: '0–1: how sure you are of both the product and the numbers' },
-        },
-        required: ['productId', 'rawText', 'units', 'damaged', 'confidence'],
-      },
-    },
-    unmatched: { type: 'ARRAY', items: { type: 'STRING' }, description: 'lines that look like sales but match no product, as written' },
-  },
-  required: ['items', 'unmatched'],
-};
-
-async function scanSales({ image, products, today }) {
-  if (!image?.data || !/^image\/(jpeg|png|webp|heic|heif)$/.test(image.mimeType || '')) throw new HttpError(400, 'Send a JPEG, PNG, WebP or HEIC image');
-  if (image.data.length > MAX_IMAGE_CHARS) throw new HttpError(413, 'Image is too large');
-  const list = (products || []).map((p) => ({ id: String(p.id), name: String(p.name), sku: String(p.sku || ''), unit: String(p.unit || '') }));
-  if (!list.length) throw new HttpError(400, 'No products to match against');
-
-  const system = `You read photos of handwritten daily sales records for a small Malaysian shop and turn them into data.
-The writing may be in English, Bahasa Melayu or Chinese, with abbreviations, short forms and messy handwriting.
-Today is ${today || 'unknown'}.
-
-Rules:
-- Only use productId values from this list. Match by meaning, not spelling (e.g. "choc chip ckie" → Chocolate Chip Cookie, "kek" → cake).
-- units is the number of units sold, as a whole number. If a line shows a tally (e.g. 正 or ||||), count it.
-- damaged is the number of units that were damaged, broken, spoiled or rejected. The sheet may have a column or a note for it (e.g. "damaged", "rosak", "reject", "buang", "破", "坏", "报废"). Use 0 when none is written. A line with only a damaged number has units 0.
-- Never put damaged units into units, and never count the same number twice.
-- If the same product appears on several lines, return one item with the totals.
-- If you cannot tell which product a line is, put it in unmatched instead of guessing.
-- Lower confidence when the number or the product is hard to read.
-- Ignore prices, totals and crossed-out lines. If the page is not a sales record, return empty lists.
-
-Products (id | name | sku | unit):
-${list.map((p) => `${p.id} | ${p.name} | ${p.sku} | ${p.unit}`).join('\n')}`;
-
-  const text = await callGemini({
-    system,
-    contents: [{ role: 'user', parts: [{ inlineData: { mimeType: image.mimeType, data: image.data } }, { text: 'Read this sales record.' }] }],
-    generationConfig: { temperature: 0, maxOutputTokens: 4096, responseMimeType: 'application/json', responseSchema: SCAN_SCHEMA },
-  });
-  let out;
-  try {
-    out = JSON.parse(text);
-  } catch {
-    throw new HttpError(502, 'Gemini returned data the app could not read');
-  }
-
-  // Never trust the ids or numbers blindly: keep known products and whole positive units.
-  const known = new Set(list.map((p) => p.id));
-  const items = new Map();
-  const unmatched = (out.unmatched || []).map(String).filter(Boolean);
-  for (const it of out.items || []) {
-    const id = String(it.productId);
-    const units = Math.max(0, Math.floor(Number(it.units)) || 0);
-    const damaged = Math.max(0, Math.floor(Number(it.damaged)) || 0);
-    if (!known.has(id)) { if (it.rawText) unmatched.push(String(it.rawText)); continue; }
-    if (!(units > 0 || damaged > 0)) continue;
-    const confidence = Math.max(0, Math.min(1, Number(it.confidence) || 0));
-    const prev = items.get(id);
-    items.set(id, prev
-      ? { ...prev, units: prev.units + units, damaged: prev.damaged + damaged, rawText: `${prev.rawText}; ${it.rawText}`, confidence: Math.min(prev.confidence, confidence) }
-      : { productId: id, rawText: String(it.rawText || ''), units, damaged, confidence });
-  }
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(out.date || '') ? out.date : null;
-  return { date, items: [...items.values()], unmatched };
-}
-
 // ---- Router ----
 const ok = { ok: true };
 const routes = [
@@ -568,7 +486,6 @@ const routes = [
   }],
 
   ['POST', /^\/ai$/, (_, __, body) => askGemini(body || {})],
-  ['POST', /^\/scan$/, (_, __, body) => scanSales(body || {})],
   ['POST', /^\/forecast$/, (_, __, body) => forecastSales(body || {})],
 ];
 

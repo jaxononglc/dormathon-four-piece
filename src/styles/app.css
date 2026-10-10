@@ -275,6 +275,7 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 .modal__header { display: flex; align-items: flex-start; gap: 16px; padding: 24px 28px 20px; }
 .modal__icon { width: 48px; height: 48px; border-radius: 12px; background: var(--indigo-50); color: var(--indigo); display: grid; place-items: center; flex-shrink: 0; }
 .modal__titles { flex: 1; }
+.scan-gallery { display: none; padding: 7px 9px; }
 .modal__actions { display: flex; align-items: center; gap: 8px; align-self: center; }
 .modal__titles h2 { font-size: 22px; }
 .modal__titles p { font-size: 14px; color: var(--muted); margin-top: 4px; }
@@ -789,6 +790,7 @@ td.center .cell-sub { justify-content: center; }
   .modal__header { padding: 18px 18px 14px; }
   .modal__titles h2 { font-size: 18px; }
   .modal__actions .hide-sm { display: none; }
+  .modal__actions .scan-gallery { display: inline-flex; }
   .modal__body { padding: 0 18px 18px; }
   .modal__footer { padding: 12px 18px; flex-wrap: wrap; }
   .modal__footer .btn { flex: 1; justify-content: center; }

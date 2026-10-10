@@ -2,7 +2,7 @@
 
 AI inventory & sales assistant for small businesses (demo shop: *Kedai Kak Ros*, a home bakery).
 React + Vite front end with a small API (`server/api.js`) on a Neon Postgres database.
-Gemini (optional) powers the AI Advisor, the paper-record scan and the sales forecast.
+Gemini (optional) powers the AI Advisor chat and the sales forecast. Scanning a paper sales sheet is read on the device with OCR (tesseract.js), with no AI service.
 
 ## Run
 
