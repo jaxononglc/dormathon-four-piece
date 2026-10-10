@@ -11,7 +11,11 @@ const EMPTY = {
   stock: '', min: '', unit: 'kg', cost: '', price: '', expiry: '',
 };
 
-// One form for both "Add stock" and "Edit stock details".
+// Product names match ignoring case and extra spaces ("Gula  Kastor" = "gula kastor").
+const normalize = (s) => s.trim().replace(/\s+/g, ' ').toLowerCase();
+const sameName = (a, b) => normalize(a) === normalize(b);
+
+// One form for both "Add new product" and "Edit stock details".
 export default function StockForm({ product, onClose }) {
   const { products, categories, suppliers, dispatch } = useStore();
   const toast = useToast();
@@ -26,7 +30,9 @@ export default function StockForm({ product, onClose }) {
   function submit(e) {
     e.preventDefault();
     const err = {};
+    const same = products.find((p) => sameName(p.name, f.name) && p.id !== product?.id);
     if (!f.name.trim()) err.name = 'Enter a product name';
+    else if (same) err.name = `${same.name} is already in your inventory — use ✏️ Edit on it to change its stock.`;
     if (!f.category) err.category = 'Pick or add a category';
     if (!f.sku.trim()) err.sku = 'Enter a SKU';
     else if (products.some((p) => p.sku.toLowerCase() === f.sku.trim().toLowerCase() && p.id !== product?.id))
@@ -52,7 +58,7 @@ export default function StockForm({ product, onClose }) {
       dispatch({ type: 'updateProduct', id: product.id, patch: data });
       toast(`Saved changes to ${data.name}`);
     } else {
-      dispatch({ type: 'addProduct', product: { ...data, id: `p${Date.now()}` } });
+      dispatch({ type: 'addProduct', product: { ...data, id: String(Date.now()) } });
       toast(`${data.name} added to inventory`);
     }
     onClose();
@@ -68,7 +74,7 @@ export default function StockForm({ product, onClose }) {
 
   return (
     <Modal
-      title={editing ? 'Edit stock details' : 'Add stock'}
+      title={editing ? 'Edit stock details' : 'Add new product'}
       subtitle={editing ? `Update ${product.name}` : 'Log a new product or ingredient'}
       icon={editing ? <Pencil size={20} /> : <PackagePlus size={20} />}
       onClose={onClose}

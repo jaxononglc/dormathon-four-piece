@@ -1,24 +1,77 @@
-// Demo rows from src/data/mockData.js as [sql, params] pairs. ON CONFLICT DO NOTHING,
-// so running them again never overwrites edits. Used by db/setup.mjs and POST /api/reset.
-import { CATEGORIES, SUPPLIERS, PRODUCTS, SALES_RECORDS } from '../src/data/mockData.js';
+// Demo rows from src/data/mockData.js as [sql, params] pairs for the schema in
+// db/schema.sql. ON CONFLICT DO NOTHING, so running them again never overwrites
+// edits. Used by db/setup.mjs and POST /api/reset.
+import { SHOP, CATEGORIES, SUPPLIERS, PRODUCTS, SALES_RECORDS, STOCK_LOG } from '../src/data/mockData.js';
 
-export function seedQueries() {
+export const SHOP_ID = 1;
+
+// The shop and its owner — needed before anything else can be saved.
+export function baseQueries() {
+  return [
+    ['INSERT INTO Shop (Shop_ID, Shop_Name, Shop_Type) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [SHOP_ID, SHOP.name, SHOP.type]],
+    ["INSERT INTO Users (User_ID, Shop_ID, User_Name, User_Role) VALUES (1, $1, $2, 'owner') ON CONFLICT DO NOTHING", [SHOP_ID, SHOP.owner]],
+    [`INSERT INTO Chat (Chat_ID, Shop_ID, Chat_Kind, Chat_Title) VALUES ('advice', $1, 'advice', 'Today’s advice') ON CONFLICT DO NOTHING`, [SHOP_ID]],
+    ...fixSequences(),
+  ];
+}
+
+// Explicit ids don't move the identity counters; push them past the highest id.
+export const fixSequences = () =>
+  [['Shop', 'Shop_ID'], ['Users', 'User_ID'], ['Item', 'Item_ID']].map(([t, c]) => [
+    `SELECT setval(pg_get_serial_sequence('${t.toLowerCase()}', '${c.toLowerCase()}'), (SELECT COALESCE(max(${c}), 0) + 1 FROM ${t}), false)`,
+    [],
+  ]);
+
+export function demoQueries() {
   const q = [];
-  for (const name of CATEGORIES) q.push(['INSERT INTO categories (name) VALUES ($1) ON CONFLICT DO NOTHING', [name]]);
-  for (const name of SUPPLIERS) q.push(['INSERT INTO suppliers (name) VALUES ($1) ON CONFLICT DO NOTHING', [name]]);
+  for (const name of CATEGORIES) q.push(['INSERT INTO Category (Shop_ID, Category_Name) VALUES ($1, $2) ON CONFLICT DO NOTHING', [SHOP_ID, name]]);
+  for (const name of SUPPLIERS) q.push(['INSERT INTO Supplier (Shop_ID, Supplier_Name) VALUES ($1, $2) ON CONFLICT DO NOTHING', [SHOP_ID, name]]);
   for (const p of PRODUCTS) {
     q.push([
-      `INSERT INTO products (id, name, sku, category, supplier, location, stock, min_stock, unit, cost, price, expiry)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) ON CONFLICT DO NOTHING`,
-      [p.id, p.name, p.sku, p.category, p.supplier, p.location, p.stock, p.min, p.unit, p.cost, p.price, p.expiry || null],
+      `INSERT INTO Item (Item_ID, Shop_ID, Category_ID, Supplier_ID, Item_Name, Item_SKU, Item_Unit, Item_CostPrice, Item_UnitPrice)
+       VALUES ($1, $2,
+         (SELECT Category_ID FROM Category WHERE Shop_ID = $2 AND Category_Name = $3),
+         (SELECT Supplier_ID FROM Supplier WHERE Shop_ID = $2 AND Supplier_Name = $4),
+         $5, $6, $7, $8, $9)
+       ON CONFLICT DO NOTHING`,
+      [Number(p.id), SHOP_ID, p.category, p.supplier, p.name, p.sku, p.unit, p.cost, p.price],
+    ]);
+    q.push([
+      `INSERT INTO Inventory (Shop_ID, Item_ID, Inventory_Stock, Inventory_Min, Inventory_Location, Inventory_Expiry)
+       VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING`,
+      [SHOP_ID, Number(p.id), p.stock, p.min, p.location, p.expiry || null],
     ]);
   }
   for (const [date, lines] of Object.entries(SALES_RECORDS)) {
-    for (const [productId, units] of Object.entries(lines)) {
-      q.push(['INSERT INTO sales (sale_date, product_id, units) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [date, productId, units]]);
+    q.push([
+      `INSERT INTO Sales (Shop_ID, Sales_Date, Sales_Source) VALUES ($1, $2, 'daily_entry')
+       ON CONFLICT (Shop_ID, Sales_Date) WHERE Sales_Source = 'daily_entry' DO NOTHING`,
+      [SHOP_ID, date],
+    ]);
+    for (const [id, units] of Object.entries(lines)) {
+      q.push([
+        `INSERT INTO SalesItem (Sales_ID, Item_ID, SalesItem_Quantity, SalesItem_UnitPrice)
+         SELECT s.Sales_ID, i.Item_ID, $3::int, COALESCE(i.Item_UnitPrice, 0)
+         FROM Sales s, Item i
+         WHERE s.Shop_ID = $1 AND s.Sales_Date = $2 AND s.Sales_Source = 'daily_entry' AND i.Item_ID = $4
+         ON CONFLICT DO NOTHING`,
+        [SHOP_ID, date, units, Number(id)],
+      ]);
     }
   }
-  // The pinned "Today's advice" chat always exists (Dashboard chats are created per day).
-  q.push([`INSERT INTO chats (id, kind, title) VALUES ('advice', 'advice', 'Today’s advice') ON CONFLICT DO NOTHING`, []]);
+  q.push([updateTotals, [SHOP_ID]]);
+  for (const l of STOCK_LOG) {
+    q.push([
+      `INSERT INTO StockLog (StockLog_ID, Shop_ID, Item_ID, StockLog_Kind, StockLog_Delta, StockLog_StockAfter, StockLog_Note, StockLog_CreatedAt)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, to_timestamp($8 / 1000.0)) ON CONFLICT DO NOTHING`,
+      [l.id, SHOP_ID, Number(l.productId), l.kind, l.delta, l.stockAfter, l.note, l.at],
+    ]);
+  }
+  q.push(...fixSequences());
   return q;
 }
+
+// Sales_Total = sum of its SalesItem subtotals.
+export const updateTotals = `
+  UPDATE Sales s SET Sales_Total = COALESCE((SELECT sum(SalesItem_Subtotal) FROM SalesItem si WHERE si.Sales_ID = s.Sales_ID), 0)
+  WHERE s.Shop_ID = $1`;

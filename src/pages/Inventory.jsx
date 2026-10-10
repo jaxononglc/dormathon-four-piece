@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { AlertTriangle, CircleAlert, Box, Search, Download, Pencil, Trash2, Info, Minus, Plus, Wallet, X } from 'lucide-react';
+import { AlertTriangle, CircleAlert, Box, Search, Download, Pencil, Trash2, Info, Plus, Wallet, X, History } from 'lucide-react';
 import StatusPill from '../components/StatusPill';
 import StockForm from '../components/StockForm';
+import StockLogModal from '../components/StockLogModal';
 import { ConfirmDialog } from '../components/Modal';
 import { useStore, stockStatus } from '../store/AppStore';
 import { useToast } from '../store/Toast';
@@ -88,6 +89,7 @@ export function StockCatalog() {
   const filtered = Boolean(query || category !== 'all' || level !== 'all');
   const [editing, setEditing] = useState(null); // product | 'new' | null
   const [deleting, setDeleting] = useState(null);
+  const [logging, setLogging] = useState(null); // product whose log is open
 
   const q = query.toLowerCase();
   const rows = products.filter(
@@ -126,7 +128,7 @@ export function StockCatalog() {
         {filtered && (
           <button className="btn btn--ghost btn--sm" onClick={() => setParams({}, { replace: true })}><X size={14} />Clear</button>
         )}
-        <button className="btn btn--soft btn--sm" onClick={() => setEditing('new')}><Plus size={14} />Add stock</button>
+        <button className="btn btn--soft btn--sm" onClick={() => setEditing('new')}><Plus size={14} />Add new product</button>
         <button className="btn btn--soft btn--sm" onClick={exportCSV}><Download size={14} />Export CSV</button>
       </section>
 
@@ -140,12 +142,11 @@ export function StockCatalog() {
                 <th className="center">In stock / Min</th>
                 <th>Unit cost / Price</th>
                 <th>Stock status</th>
-                <th className="center">Quick adjust</th>
                 <th className="right">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && <tr><td colSpan={7} className="empty">No products match your filters.</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={6} className="empty">No products match your filters.</td></tr>}
               {rows.map((p) => {
                 const s = stockStatus(p);
                 return (
@@ -164,15 +165,9 @@ export function StockCatalog() {
                       <div>Sell: <b>{p.price != null ? rm2(p.price) : 'not sold'}</b></div>
                     </td>
                     <td><StatusPill product={p} /></td>
-                    <td className="center">
-                      <div className="stepper stepper--sm">
-                        <button disabled={p.stock === 0} onClick={() => dispatch({ type: 'adjustStock', id: p.id, delta: -1 })} aria-label={`Decrease ${p.name}`}><Minus size={12} /></button>
-                        <span>{p.stock}</span>
-                        <button onClick={() => dispatch({ type: 'adjustStock', id: p.id, delta: 1 })} aria-label={`Increase ${p.name}`}><Plus size={12} /></button>
-                      </div>
-                    </td>
                     <td className="right">
-                      <button className="icon-btn" onClick={() => setEditing(p)} aria-label={`Edit ${p.name}`}><Pencil size={16} /></button>
+                      <button className="icon-btn" onClick={() => setLogging(p)} aria-label={`Log for ${p.name}`} title="Log"><History size={16} /></button>
+                      <button className="icon-btn" onClick={() => setEditing(p)} aria-label={`Edit ${p.name}`} title="Edit"><Pencil size={16} /></button>
                       <button className="icon-btn icon-btn--danger" onClick={() => setDeleting(p)} aria-label={`Delete ${p.name}`}><Trash2 size={16} /></button>
                     </td>
                   </tr>
@@ -183,10 +178,11 @@ export function StockCatalog() {
         </div>
         <div className="table-foot">
           <span>Showing {rows.length} of {products.length} items</span>
-          <span className="row gap-4 hide-mobile"><Info size={14} />Tip: use +/− for quick shelf counts, or ✏️ to log a bigger delivery.</span>
+          <span className="row gap-4 hide-mobile"><Info size={14} />Tip: use ✏️ to update stock after a delivery or a shelf count, and 🕘 to see its history.</span>
         </div>
       </section>
 
+      {logging && <StockLogModal product={products.find((x) => x.id === logging.id) || logging} onClose={() => setLogging(null)} />}
       {editing && <StockForm product={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
       {deleting && (
         <ConfirmDialog

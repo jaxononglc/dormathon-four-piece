@@ -127,7 +127,7 @@ export default function Advisor() {
     const chatId = ensureChat(`Receipt: ${file.name}`);
     dispatch({ type: 'addMessage', chatId, message: chatMessage('user', `📎 Attached receipt: ${file.name}`) });
     // TODO(backend): upload the file and let the model read it (OCR) to add stock.
-    dispatch({ type: 'addMessage', chatId, message: chatMessage('ai', 'Got it. Reading receipts needs the real backend, so in this demo nothing was added to stock. Use Inventory → Add stock to log the delivery by hand.') });
+    dispatch({ type: 'addMessage', chatId, message: chatMessage('ai', 'Got it. Reading receipts needs the real backend, so in this demo nothing was added to stock. Use Inventory → ✏️ Edit on the product to update its stock by hand.') });
   }
 
   return (

@@ -22,8 +22,6 @@ export function syncAction(action, state) {
       return api('PATCH', `/products/${encodeURIComponent(action.id)}`, { patch: action.patch });
     case 'deleteProduct':
       return api('DELETE', `/products/${encodeURIComponent(action.id)}`);
-    case 'adjustStock':
-      return api('POST', `/products/${encodeURIComponent(action.id)}/adjust`, { delta: action.delta });
     case 'addOption':
       return api('POST', '/options', { list: action.list, name: action.name });
     case 'saveSales':

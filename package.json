@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "db:setup": "node --env-file=.env db/setup.mjs"
+    "db:setup": "node --env-file=.env db/setup.mjs",
+    "db:migrate": "node --env-file=.env db/migrate.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",

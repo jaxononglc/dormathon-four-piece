@@ -1,9 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from 'react';
-import { CATEGORIES, PRODUCTS, SALES_RECORDS, SUPPLIERS } from '../data/mockData';
+import { CATEGORIES, PRODUCTS, SALES_RECORDS, STOCK_LOG, SUPPLIERS } from '../data/mockData';
 import { dayLabel, localToday } from '../lib/format';
 import { api, syncAction } from '../lib/api';
+import { withStockLog, changedLogs } from '../lib/stockLog';
 
-const STORAGE_KEY = 'bijak-demo-v1';
+// v2: product ids changed from 'p1' to '1' (database Item_IDs).
+const STORAGE_KEY = 'bijak-demo-v2';
 
 // Data comes from the database through /api (server/api.js) when it is reachable.
 // Every action updates this store first, then is saved to the API in order
@@ -31,6 +33,8 @@ const initialState = () => ({
   // Follow-up questions asked from the pinned "Today's advice" chat in AI Advisor.
   adviceChat: [], // [{ id, role, text, at }]
   dismissedRecs: [], // ids from lib/advice.js the user said "Not now" to
+  // Per-product change history (Inventory → Log), see lib/stockLog.js.
+  stockLog: STOCK_LOG, // [{ id, productId, at, kind, delta, stockAfter, note }]
 });
 
 function load() {
@@ -47,6 +51,10 @@ function load() {
 }
 
 function reducer(state, action) {
+  return withStockLog(state, baseReducer(state, action), action);
+}
+
+function baseReducer(state, action) {
   switch (action.type) {
     case 'addProduct':
       return { ...state, products: [...state.products, action.product] };
@@ -65,13 +73,6 @@ function reducer(state, action) {
     }
     case 'deleteProduct':
       return { ...state, products: state.products.filter((p) => p.id !== action.id) };
-    case 'adjustStock':
-      return {
-        ...state,
-        products: state.products.map((p) =>
-          p.id === action.id ? { ...p, stock: Math.max(0, p.stock + action.delta) } : p
-        ),
-      };
     case 'saveSales': {
       // Replace the day's record and move stock by the difference, so editing
       // an already-saved day never double-counts.
@@ -202,12 +203,16 @@ export function StoreProvider({ children }) {
 
   // Update the screen right away, then save to the API one call at a time so
   // the order matches (e.g. a chat is created before its first message).
-  const dispatch = useCallback((action) => {
+  const dispatch = useCallback((input) => {
+    // meta gives log entries a fixed id/time, so replaying the reducer gives the same result.
+    const action = { ...input, meta: { id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, at: Date.now() } };
     const before = stateRef.current;
     rawDispatch(action);
     if (before.backend !== 'online') return;
+    const logs = changedLogs(before, reducer(before, action));
     queue.current = queue.current
       .then(() => syncAction(action, before))
+      .then(() => logs.length && api('POST', '/stock-logs', { logs }))
       .then(() => action.type === 'reset' && refresh())
       .catch((err) => {
         console.error(`Saving "${action.type}" failed:`, err);
