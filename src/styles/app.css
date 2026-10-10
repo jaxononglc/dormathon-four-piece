@@ -152,7 +152,8 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
   border-radius: 10px; background: #fff; color: var(--light);
 }
 .search:focus-within { border-color: var(--indigo); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12); }
-.search input { flex: 1; border: 0; outline: 0; padding: 10px 0; font-size: 14px; background: transparent; color: var(--ink); min-width: 0; }
+.search input { flex: 1; border: 0; outline: 0; padding: 10px 0; font-size: 14px; background: transparent; color: var(--ink); min-width: 0; text-overflow: ellipsis; }
+.search input::placeholder { text-overflow: ellipsis; } /* long placeholder ends with "…" instead of being cut off */
 .checkbox { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; color: var(--text); white-space: nowrap; cursor: pointer; }
 .checkbox input { width: 16px; height: 16px; accent-color: var(--indigo); }
 
@@ -226,6 +227,7 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 .chart-tip--start { transform: translate(-12px, calc(-100% - 10px)); }
 .chart-tip--rich { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border-radius: 10px; }
 .chart-tip--rich b { font-size: 14px; }
+.chart-tip__row { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; font-size: 11px; color: #c7d2fe; white-space: nowrap; }
 .chart-tip__label { color: #a5b4fc; font-size: 11px; font-weight: 500; }
 .chart-tip__up { color: #6ee7b7; font-size: 11px; }
 .chart-tip__down { color: #fca5a5; font-size: 11px; }
@@ -371,6 +373,7 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 .pricing { font-size: 12px; color: var(--muted); }
 .pricing b { color: var(--ink); font-weight: 600; }
 .pricing .lbl::after { content: ': '; }
+.table td.supplier { font-size: 13px; color: var(--text); }
 /* Row actions: three icons on desktop, a ⋮ menu on phones (see the mobile block) */
 .row-menu { display: none; }
 /* Category next to the product name: phone cards only (desktop has its own column) */
@@ -426,7 +429,6 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 .margin-row__bar { height: 100%; border-radius: 6px; background: var(--indigo-400); }
 .margin-row:first-child .margin-row__bar { background: var(--indigo); }
 .margin-row__bar.is-below { background: var(--red); }
-.margin-row__val small { display: none; }
 .margin-row__target { position: absolute; top: -6px; bottom: -6px; width: 1.5px; background: repeating-linear-gradient(var(--red) 0 4px, transparent 4px 8px); }
 .slow-item { display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--row-line); border-radius: 12px; }
 .slow-item .icon-tile { width: 34px; height: 34px; }
@@ -449,7 +451,6 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 .composer:focus-within { border-color: var(--indigo); }
 .composer textarea { border: 0; outline: 0; resize: none; font-size: 15px; min-height: 24px; }
 .composer__bar { display: flex; justify-content: space-between; align-items: center; }
-.ctx-chip { display: inline-flex; align-items: center; gap: 5px; background: var(--bg); border-radius: 8px; padding: 4px 8px; font-size: 12px; font-weight: 600; color: var(--text); }
 .tool-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 8px; border: 0; border-radius: 8px; background: transparent; font-size: 13px; font-weight: 500; color: var(--text); }
 .tool-btn:hover { background: var(--bg); }
 .popover-anchor { position: relative; }
@@ -648,13 +649,12 @@ td.center .cell-sub { justify-content: center; }
   .table--cards, .table--cards tbody { display: block; }
   /* Sales analysis → Profit margin by product: name + % on one line, a thin full-width bar under it
        Kotak hadiah (besar)                  57%
-       ████████████████████████┊░░░░░░░░    +22 pts  */
+       ████████████████████████┊░░░░░░░░  */
   .margins { gap: 18px; padding-top: 6px; }
   .margin-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'name val' 'track track'; gap: 9px 12px; align-items: end; }
   .margin-row__name { grid-area: name; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; color: var(--ink); }
   .margin-row__val { grid-area: val; display: flex; align-items: baseline; gap: 6px; }
   .margin-row__val b { font-size: 15px; }
-  .margin-row__val small { display: inline; font-size: 11px; font-weight: 700; }
   .margin-row__track { grid-area: track; height: 10px; border-radius: 999px; }
   .margin-row__bar { border-radius: 999px; }
   .margin-row__target { top: -5px; bottom: -5px; }
@@ -693,21 +693,21 @@ td.center .cell-sub { justify-content: center; }
   /* Category tag sits at the right end, next to the ⋮; a long name is cut off with "…" before it */
   .table--cards .cell-title__name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .table--cards td:nth-child(1) .cell-sub { grid-area: sub; align-self: center; margin-top: 0; gap: 6px 8px; }
-  .table--cards td:nth-child(2) { display: none; }
+  .table--cards td:nth-child(2), .table--cards td:nth-child(3) { display: none; } /* category (shown beside the name) and supplier */
   .table--cards .badge--inline { display: inline-block; flex: none; margin-left: auto; font-size: 12px; font-weight: 500; line-height: 1.5; }
-  .table--cards td:nth-child(3), .table--cards td:nth-child(4) > div { padding-top: 10px; border-top: 1px solid var(--row-line); }
-  .table--cards td:nth-child(3) { grid-area: qty; }
-  .table--cards td:nth-child(3) .cell-sub { justify-content: flex-start; margin-top: 0; }
-  .table--cards td:nth-child(4) { display: contents; }
-  .table--cards td:nth-child(4) > div:nth-child(1) { grid-area: cost; }
-  .table--cards td:nth-child(4) > div:nth-child(2) { grid-area: sell; }
+  .table--cards td:nth-child(4), .table--cards td:nth-child(5) > div { padding-top: 10px; border-top: 1px solid var(--row-line); }
+  .table--cards td:nth-child(4) { grid-area: qty; }
+  .table--cards td:nth-child(4) .cell-sub { justify-content: flex-start; margin-top: 0; }
+  .table--cards td:nth-child(5) { display: contents; }
+  .table--cards td:nth-child(5) > div:nth-child(1) { grid-area: cost; }
+  .table--cards td:nth-child(5) > div:nth-child(2) { grid-area: sell; }
   /* small label above each value of the strip */
   .table--cards td[data-label]::before, .pricing .lbl { display: block; margin-bottom: 3px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--light); }
   .table--cards td[data-label]::before { content: attr(data-label); }
   .pricing .lbl::after { content: none; }
   .table--cards .pricing b { font-size: 14px; }
-  .table--cards td:nth-child(5) { grid-area: status; justify-self: end; align-self: center; }
-  .table--cards td:nth-child(6) { grid-area: actions; justify-self: end; margin: -4px -6px 0 0; }
+  .table--cards td:nth-child(6) { grid-area: status; justify-self: end; align-self: center; }
+  .table--cards td:nth-child(7) { grid-area: actions; justify-self: end; margin: -4px -6px 0 0; }
   .table--cards .row-actions { display: none; }
   .table--cards .row-menu { display: block; position: relative; }
   .table--cards .row-menu > .icon-btn { width: 32px; height: 32px; }
@@ -733,7 +733,6 @@ td.center .cell-sub { justify-content: center; }
   .composer-wrap { padding: 6px 10px 8px; }
   .composer { padding: 10px 10px 8px 12px; border-radius: 16px; gap: 8px; }
   .composer > .row:first-child { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
-  .ctx-chip { flex-shrink: 0; }
   .tool-btn__label { display: none; }
   .disclaimer { display: none; }
   .popover { width: min(260px, calc(100vw - 40px)); }

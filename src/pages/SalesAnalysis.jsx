@@ -148,7 +148,7 @@ export default function SalesAnalysis() {
           </div>
         </div>
         {hasTrend
-          ? <LineChart labels={a.trend.map((t) => t.label)} current={a.trend.map((t) => t.value)} previous={a.trend.map((t) => t.previous)} />
+          ? <LineChart labels={a.trend.map((t) => t.label)} current={a.trend.map((t) => t.value)} previous={a.trend.map((t) => t.previous)} previousLabels={a.trend.map((t) => t.previousLabel)} />
           : <p className="muted empty">No sales recorded in this period.</p>}
       </section>
 
@@ -205,8 +205,6 @@ export default function SalesAnalysis() {
                 </div>
                 <div className="margin-row__val">
                   <b className={m < MARGIN_TARGET ? 'text-red' : ''}>{pct(m)}</b>
-                  {/* phone only: how far from the target */}
-                  <small className={m < MARGIN_TARGET ? 'text-red' : 'text-green'}>{m < MARGIN_TARGET ? '−' : '+'}{Math.round(Math.abs(m - MARGIN_TARGET) * 100)} pts</small>
                 </div>
               </div>
             ))}

@@ -69,7 +69,7 @@ export function BarChart({ data, height = 230, defaultIndex }) {
 // The SVG is drawn at the width it is shown at, so text and lines keep their real size on a
 // phone (a fixed 1000-wide drawing shrunk to ~300px made everything tiny). On narrow
 // screens it is a bit shorter and only some x labels are shown so they never overlap.
-export function LineChart({ labels, current, previous, height: heightProp = 250 }) {
+export function LineChart({ labels, current, previous, previousLabels, height: heightProp = 250 }) {
   const [hover, setHover] = useState(null);
   const wrapRef = useRef(null);
   const [W, setW] = useState(1000);
@@ -101,7 +101,8 @@ export function LineChart({ labels, current, previous, height: heightProp = 250 
   const showDots = labels.length <= 14;
   // Tooltip and guide line only while hovering (or tapping) a point.
   const active = hover;
-  const change = active != null && previous[active] ? current[active] / previous[active] - 1 : 0;
+  // Difference in RM = this period − previous period (a loss shows as a minus)
+  const diff = active != null ? current[active] - (previous[active] || 0) : 0;
 
   return (
     <div className="chart" ref={wrapRef}>
@@ -138,12 +139,11 @@ export function LineChart({ labels, current, previous, height: heightProp = 250 
           style={{ left: `${(x(active) / W) * 100}%`, top: `${(y(current[active]) / height) * 100}%` }}
         >
           <span className="chart-tip__label">{labels[active]}</span>
-          <b>{rm(current[active])}</b>
-          {previous[active] > 0 && (
-            <span className={change >= 0 ? 'chart-tip__up' : 'chart-tip__down'}>
-              {change >= 0 ? '+' : '−'}{Math.abs(change * 100).toFixed(0)}% vs previous
-            </span>
-          )}
+          <span className="chart-tip__row"><span>This period</span><b>{rm(current[active])}</b></span>
+          <span className="chart-tip__row"><span>Previous period{previousLabels?.[active] ? ` (${previousLabels[active]})` : ''}</span><b>{rm(previous[active])}</b></span>
+          <span className={diff >= 0 ? 'chart-tip__up' : 'chart-tip__down'}>
+            {diff >= 0 ? '+' : '−'}{rm(Math.abs(diff), Number.isInteger(diff) ? 0 : 2)} vs previous
+          </span>
         </div>
       )}
     </div>

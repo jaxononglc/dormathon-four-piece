@@ -42,7 +42,6 @@ function InventoryShell({ children }) {
       <header className="topbar">
         <div>
           <h1>Stock &amp; inventory</h1>
-          <p className="muted">Monitor current quantities, receive incoming stock, and replenish low products.</p>
         </div>
       </header>
 
@@ -146,6 +145,7 @@ export function StockCatalog() {
               <tr>
                 <th>Product / SKU</th>
                 <th>Category</th>
+                <th>Supplier</th>
                 <th className="center">In stock / Min</th>
                 <th>Unit cost / Price</th>
                 <th>Stock status</th>
@@ -153,7 +153,7 @@ export function StockCatalog() {
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && <tr><td colSpan={6} className="empty">No products match your filters.</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={7} className="empty">No products match your filters.</td></tr>}
               {rows.map((p) => {
                 const s = stockStatus(p);
                 return (
@@ -163,6 +163,7 @@ export function StockCatalog() {
                       <div className="cell-sub"><span className="sku">{p.sku}</span>{p.location && <>Loc: {p.location}</>}</div>
                     </td>
                     <td><span className="badge">{p.category}</span></td>
+                    <td className="supplier">{p.supplier || <span className="dash">—</span>}</td>
                     <td className="center" data-label="In stock">
                       <div className={`qty qty--${s}`}>{p.stock} <small>{p.unit}</small></div>
                       <div className="cell-sub">Min: {p.min}</div>

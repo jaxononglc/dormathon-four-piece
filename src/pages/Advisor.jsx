@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  Sparkles, Box, ArrowRight, Database, LineChart, CalendarDays, Paperclip, Upload, Mic, MessageSquare, Trash2, Plus, LayoutGrid, Pin, Lightbulb, RotateCcw, History, X,
+  Sparkles, Box, ArrowRight, Paperclip, Upload, Mic, MessageSquare, Trash2, Plus, LayoutGrid, Pin, Lightbulb, RotateCcw, History, X,
 } from 'lucide-react';
 import AdviceCard from '../components/AdviceCard';
 import { useStore } from '../store/AppStore';
@@ -69,6 +69,19 @@ export default function Advisor() {
   const history = [...chats].sort((a, b) => b.updatedAt - a.updatedAt);
 
   useEffect(() => { dispatch({ type: 'readAdvisor' }); }, [dispatch]);
+
+  // The "Pick product" list closes when you tap anywhere else (or press Esc).
+  useEffect(() => {
+    if (!picking) return undefined;
+    const close = (e) => { if (!e.target.closest('.popover-anchor')) setPicking(false); };
+    const esc = (e) => { if (e.key === 'Escape') setPicking(false); };
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('pointerdown', close);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [picking]);
 
   // Questions sent from the dashboard / sales page arrive via router state and
   // always start a fresh chat. The ref stops StrictMode from sending twice.
@@ -206,11 +219,6 @@ export default function Advisor() {
 
         <div className="composer-wrap">
           <form className="composer" onSubmit={(e) => { e.preventDefault(); send(input); }}>
-            <div className="row gap-6">
-              <span className="ctx-chip"><Database size={13} />All inventory</span>
-              <span className="ctx-chip"><LineChart size={13} />Sales · 90 days</span>
-              <span className="ctx-chip"><CalendarDays size={13} />Until 8 Nov</span>
-            </div>
             <textarea
               rows={1}
               value={input}

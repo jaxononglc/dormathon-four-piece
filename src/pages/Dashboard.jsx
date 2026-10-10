@@ -7,7 +7,7 @@ import DailySalesModal from '../components/DailySalesModal';
 import DashboardThread from '../components/DashboardThread';
 import { useStore } from '../store/AppStore';
 import { LAST_WEEK, ANALYSIS } from '../data/mockData';
-import { addDays, dayShort, localToday, longDate, mondayOf, parseISO, rm, signedPct } from '../lib/format';
+import { addDays, dayShort, localToday, mondayOf, parseISO, rm, signedPct } from '../lib/format';
 import { useForecast } from '../lib/forecast';
 import { getAiReply, chatMessage } from '../lib/aiReply';
 import { buildAdvice } from '../lib/advice';
@@ -104,7 +104,6 @@ export default function Dashboard() {
         <header className="topbar">
           <div>
             <h1>Good morning, {shop.owner}</h1>
-            <p className="muted">{longDate(localToday())} · Here’s how your shop is doing</p>
           </div>
           <div className="topbar__actions">
             <button className="btn btn--primary" onClick={() => setRecording(true)}>Record New Sale</button>

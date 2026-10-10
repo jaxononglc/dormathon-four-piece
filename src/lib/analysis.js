@@ -75,6 +75,7 @@ export function analyse(period, today, { sales, damage, products, productsById }
 
   const trend = buckets.map((b) => ({
     label: b.label,
+    previousLabel: P.bucket === 1 ? `${dayShort(b.prevFrom)} ${dayNum(b.prevFrom)}` : shortDate(b.prevFrom), // the matching day / block last period
     value: totals(unitsIn(sales, b.from, b.to)).revenue,
     previous: totals(unitsIn(sales, b.prevFrom, b.prevTo)).revenue,
   }));
